@@ -2,9 +2,30 @@ version: '3.8'
 
 services:
 
+  postgres:
+    image: postgres:13.7
+    container_name: aiml_postgres
+    environment:
+      - POSTGRES_USER=aiml
+      - POSTGRES_PASSWORD=aiml123
+      - POSTGRES_DB=aiml
+      - TZ=Etc/GMT
+      - PGTZ=Etc/GMT
+    ports:
+      - 5433:5432
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: aiml_pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@aiml.com
+      - PGADMIN_DEFAULT_PASSWORD=admin123
+    ports:
+      - 5050:80
+
   prometheus:
     image: prom/prometheus
-    container_name: prometheus
+    container_name: aiml_prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yaml'
     ports:
@@ -16,7 +37,7 @@ services:
 
   grafana:
     image: grafana/grafana
-    container_name: grafana
+    container_name: aiml_grafana
     ports:
       - 3000:3000
     restart: unless-stopped
@@ -25,6 +46,30 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=grafana
     volumes:
       - ./grafana:/etc/grafana/provisioning/datasources
+  
+  minio:
+    restart: unless-stopped
+    image: quay.io/minio/minio:latest
+    container_name: aiml_minio
+    volumes:
+      - ./minio/data:/home/data
+      - ./minio/certs:/home/certs
+    ports:
+      - ${MINIO_PORT}:9000
+      - ${MINIO_CONSOLE_PORT}:443
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_ADDRESS=${MINIO_ADDRESS}
+      - MINIO_CONSOLE_ADDRESS=${MINIO_CONSOLE_ADDRESS}
+      - MINIO_PORT=${MINIO_PORT}
+      - MINIO_STORAGE_USE_HTTPS=${MINIO_STORAGE_USE_HTTPS}
+    command: server ${MINIO_DATA_DIR} --certs-dir ${MINIO_CERT_DIR}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://minio:${MINIO_PORT}/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
 volumes:
   prom_data:
