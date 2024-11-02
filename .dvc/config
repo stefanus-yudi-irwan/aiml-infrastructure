@@ -2,7 +2,7 @@
     remote = minio
 ['remote "minio"']
     url = s3://aiml-bucket
-    endpointurl = http://localhost:9000
+    endpointurl = https://host.docker.internal:9000
     access_key_id = BQZB2j3nbhPRMeFniKYp
     secret_access_key = YDJxEDxZxf8ZdKLaPMImXmDSZoN4kTAv3KynipY8
     ssl_verify = false
