@@ -3,16 +3,24 @@ version: '3.8'
 services:
 
   postgres:
+    restart: unless-stopped
     image: postgres:13.7
     container_name: aiml_postgres
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
-      - POSTGRES_USER=aiml
-      - POSTGRES_PASSWORD=aiml123
-      - POSTGRES_DB=aiml
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
       - TZ=Etc/GMT
       - PGTZ=Etc/GMT
     ports:
-      - 5433:5432
+      - ${POSTGRES_PORT}:5432
+    healthcheck:
+      test: ["CMD", "pg_isready", "-p", "${POSTGRES_PORT}", "-U", "${POSTGRES_USER}", "-db", "${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
 
   pgadmin:
     image: dpage/pgadmin4
@@ -69,6 +77,32 @@ services:
       test: ["CMD", "curl", "-f", "http://minio:${MINIO_PORT}/minio/health/live"]
       interval: 30s
       timeout: 20s
+      retries: 3
+
+  mlflow:
+    restart: unless-stopped
+    build: ./mlflow
+    image: aiml_mlflow
+    container_name: aiml_mlflow
+    depends_on:
+      - postgres
+      - minio
+    ports:
+      - ${MLFLOW_PORT}:5000
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY}
+      - MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL}
+      - MLFLOW_S3_IGNORE_TLS=${MLFLOW_S3_IGNORE_TLS}
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${MLFLOW_DB}
+      --artifacts-destination s3://${MLFLOW_BUCKET_NAME}
+    healthcheck:
+      test: ["CMD","curl", "-f", "http://host.docker.internal:${MLFLOW_PORT}/"]
+      interval: 30s
+      timeout: 10s
       retries: 3
 
 volumes:
