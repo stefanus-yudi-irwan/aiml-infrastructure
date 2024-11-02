@@ -6,7 +6,6 @@ __pycache__
 config.yaml.example
 connector
 migration
-research
 test
 deploy/dev/minio/certs
 deploy/dev/minio/data
