@@ -17,4 +17,4 @@ scrape_configs:
   metrics_path: /metrics
   static_configs:
   - targets:
-    - 172.26.41.160:8081
+    - 172.28.210.232:8081

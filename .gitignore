@@ -9,3 +9,4 @@ migration
 test
 deploy/dev/minio/certs
 deploy/dev/minio/data
+.dvc
