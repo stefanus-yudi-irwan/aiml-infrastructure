@@ -1,9 +1,10 @@
 package database
 
 type IDBConnector interface {
-	InsertData(structData interface{}) error
-	DeleteData(structData interface{}) error
-	UpdateData(structData interface{}, structFields ...string) error
-	UpsertData(structData interface{}) error
-	GetData(structID interface{}) error
+	Insert(structPointer interface{}) error
+	Update(structPointer interface{}, structFields ...string) error
+	Upsert(structPointer interface{}) error
+	HardDelete(structPointer interface{}) error
+	SoftDelete(structPointer interface{}) error
+	Restore(structPointer interface{}) error
 }

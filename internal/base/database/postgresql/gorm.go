@@ -3,6 +3,8 @@ package postgresql
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -53,64 +55,106 @@ func (p *postgresDBConnector) error(err error, method string, params ...interfac
 	return fmt.Errorf("postgresDBConnector.(%v)(%v) %w", method, params, err)
 }
 
-func (p *postgresDBConnector) InsertData(structData interface{}) error {
-	if err := p.GormDB.Create(structData).Error; err != nil {
-		primaryKeys, err := getPrimaryKeys(p.GormDB, structData)
+func (p *postgresDBConnector) InsertData(structPointer interface{}) error {
+	if err := p.GormDB.Create(structPointer).Error; err != nil {
+		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
 		if err != nil {
-			return p.error(err, "InsertData", "fail to get primary key")
+			return p.error(err, "InsertData-001", "fail to get primary keys")
 		}
-		return p.error(err, "InsertData", primaryKeys)
+		return p.error(err, "InsertData-002", primaryKeys)
 	}
 	return nil
 }
 
-func (p *postgresDBConnector) UpdateData(structData interface{}, structFields ...string) error {
+func (p *postgresDBConnector) UpdateData(structPointer interface{}, structFields ...string) error {
 
-	dbColumnName, err := getColumnName(p.GormDB, structData, structFields...)
+	dbColumnName, err := getColumnName(p.GormDB, structPointer, structFields...)
 	if err != nil {
-		return p.error(err, "UpdateData", "fail to get column name")
+		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		if err != nil {
+			return p.error(err, "UpdateData-001", "fail to get primary keys")
+		}
+		return p.error(err, "UpdateData-002", primaryKeys)
 	}
 
-	tx := p.GormDB.Select(dbColumnName).Updates(structData)
+	tx := p.GormDB.Select(dbColumnName).Updates(structPointer)
 
 	if tx.Error != nil {
-		return p.error(tx.Error, "UpdateData")
+		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		if err != nil {
+			return p.error(err, "UpdateData-003", "fail to get primary keys")
+		}
+		return p.error(tx.Error, "UpdateData-004", primaryKeys)
 	}
+
 	if tx.RowsAffected == 0 {
-		return p.error(gorm.ErrRecordNotFound, "UpdateData")
+		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		if err != nil {
+			return p.error(err, "UpdateData-005", "fail to get primary keys")
+		}
+		return p.error(gorm.ErrRecordNotFound, "UpdateData-006", primaryKeys)
 	}
 
 	return nil
 }
 
-func (p *postgresDBConnector) UpsertData(structData interface{}) error {
-	return p.GormDB.Clauses(clause.OnConflict{
-		UpdateAll: true,
-	}).Create(structData).Error
+func (p *postgresDBConnector) UpsertData(structPointer interface{}) error {
+
+	if err := touchUpdatedAt(structPointer); err != nil {
+		return p.error(err, "UpsertData-001", "failed to update UpdatedAt")
+	}
+
+	primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+	if err != nil {
+		return p.error(err, "UpsertData-002", "fail to get primary keys")
+	}
+
+	updateableColumns, err := getUpdateableColumns(p.GormDB, structPointer)
+	if err != nil {
+		return p.error(err, "UpsertData-003", primaryKeys)
+	}
+
+	if err = p.GormDB.Clauses(clause.OnConflict{
+		Columns:   formatConflictColumns(primaryKeys),
+		DoUpdates: clause.AssignmentColumns(updateableColumns),
+	}).Create(structPointer).Error; err != nil {
+		return p.error(err, "UpsertData-004", primaryKeys)
+	}
+
+	return nil
 }
 
-// func (p *postgresDBConnector) DeleteData(structData interface{}) error {
-// 	return p.GormDB.Delete(structData).Error
-// }
+func (p *postgresDBConnector) DeleteData(structPointer interface{}) error {
+	err := p.GormDB.Delete(structPointer).Error
+	if err != nil {
+		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		if err != nil {
+			return p.error(err, "DeleteData-001", "fail to get primary keys")
+		}
+		return p.error(err, "DeleteData-002", primaryKeys)
+	}
+
+	return nil
+}
 
 // func (p *postgresDBConnector) GetDataByID(id interface{}, data interface{}) error {
 // 	return p.GormDB.First(data, id).Error
 // }
 
-func getSchema(db *gorm.DB, structData interface{}) (*schema.Schema, error) {
+func getSchema(db *gorm.DB, structPointer interface{}) (*schema.Schema, error) {
 	statement := &gorm.Statement{
 		DB: db,
 	}
 
-	if err := statement.Parse(structData); err != nil {
+	if err := statement.Parse(structPointer); err != nil {
 		return nil, err
 	}
 
 	return statement.Schema, nil
 }
 
-func getColumnName(db *gorm.DB, structData interface{}, structFields ...string) ([]string, error) {
-	dataSchema, err := getSchema(db, structData)
+func getColumnName(db *gorm.DB, structPointer interface{}, structFields ...string) ([]string, error) {
+	dataSchema, err := getSchema(db, structPointer)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +172,8 @@ func getColumnName(db *gorm.DB, structData interface{}, structFields ...string) 
 	return dbColumns, nil
 }
 
-func getPrimaryKeys(db *gorm.DB, structData interface{}) ([]string, error) {
-	schema, err := getSchema(db, structData)
+func getPrimaryKeys(db *gorm.DB, structPointer interface{}) ([]string, error) {
+	schema, err := getSchema(db, structPointer)
 	if err != nil {
 		return nil, err
 	}
@@ -140,4 +184,79 @@ func getPrimaryKeys(db *gorm.DB, structData interface{}) ([]string, error) {
 	}
 
 	return primaryKeys, nil
+}
+
+func getUpdateableColumns(db *gorm.DB, structPointer interface{}) ([]string, error) {
+
+	const EMPTYCOLUMNNAME = ""
+
+	schema, err := getSchema(db, structPointer)
+	if err != nil {
+		return nil, err
+	}
+
+	updateableColumns := make([]string, 0)
+	for _, field := range schema.Fields {
+		if field.PrimaryKey {
+			continue
+		}
+
+		if _, ok := field.TagSettings["AUTOCREATETIME"]; ok {
+			continue
+		}
+
+		if strings.TrimSpace(field.DBName) == EMPTYCOLUMNNAME {
+			continue
+		}
+
+		updateableColumns = append(updateableColumns, field.DBName)
+	}
+
+	return updateableColumns, nil
+}
+
+func formatConflictColumns(primaryKeys []string) []clause.Column {
+	columns := make([]clause.Column, 0, len(primaryKeys))
+
+	for _, key := range primaryKeys {
+		columns = append(columns, clause.Column{
+			Name: key,
+		})
+	}
+
+	return columns
+}
+
+func touchUpdatedAt(structPointer interface{}) error {
+	if structPointer == nil {
+		return fmt.Errorf("structPointer is nil")
+	}
+
+	v := reflect.ValueOf(structPointer)
+
+	if v.Kind() != reflect.Ptr {
+		return fmt.Errorf("structPointer must be a pointer")
+	}
+
+	v = v.Elem()
+	if v.Kind() != reflect.Struct {
+		return fmt.Errorf("structPointer must point to a struct")
+	}
+
+	field := v.FieldByName("UpdatedAt")
+	if !field.IsValid() {
+		return fmt.Errorf("field UpdatedAt does not exist")
+	}
+
+	if !field.CanSet() {
+		return fmt.Errorf("field UpdatedAt cannot be set")
+	}
+
+	if field.Kind() != reflect.Int64 {
+		return fmt.Errorf("field UpdatedAt must be int64")
+	}
+
+	field.SetInt(time.Now().Unix())
+
+	return nil
 }
