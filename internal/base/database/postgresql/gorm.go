@@ -1,10 +1,10 @@
 package postgresql
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"reflect"
-	"strings"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -55,208 +55,197 @@ func (p *postgresDBConnector) error(err error, method string, params ...interfac
 	return fmt.Errorf("postgresDBConnector.(%v)(%v) %w", method, params, err)
 }
 
-func (p *postgresDBConnector) InsertData(structPointer interface{}) error {
+func (p *postgresDBConnector) Insert(structPointer interface{}) error {
+
 	if err := p.GormDB.Create(structPointer).Error; err != nil {
-		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 		if err != nil {
-			return p.error(err, "InsertData-001", "fail to get primary keys")
+			return p.error(err, "Insert-001", "failed to parse DAO")
 		}
-		return p.error(err, "InsertData-002", primaryKeys)
+		primaryKeysValue, err := DAOMetadata.PrimaryKeysValues()
+		if err != nil {
+			return p.error(err, "Insert-001", "fail to get primary keys")
+		}
+		return p.error(err, "Insert-002", primaryKeysValue)
 	}
 	return nil
 }
 
-func (p *postgresDBConnector) UpdateData(structPointer interface{}, structFields ...string) error {
+func (p *postgresDBConnector) Update(structPointer interface{}, structFields ...string) error {
 
-	dbColumnName, err := getColumnName(p.GormDB, structPointer, structFields...)
+	DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
-		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
-		if err != nil {
-			return p.error(err, "UpdateData-001", "fail to get primary keys")
-		}
-		return p.error(err, "UpdateData-002", primaryKeys)
+		return p.error(err, "Update-001", "failed to parse DAO")
 	}
 
-	tx := p.GormDB.Select(dbColumnName).Updates(structPointer)
+	columns, err := DAOMetadata.GetSelectedColumnName(structFields...)
+	if err != nil {
+		return p.error(err, "Update-002", "failed to get column names")
+	}
+	tx := p.GormDB.
+		Select(columns).
+		Updates(structPointer)
 
 	if tx.Error != nil {
-		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		primaryKeysValue, err := DAOMetadata.PrimaryKeysValues()
 		if err != nil {
-			return p.error(err, "UpdateData-003", "fail to get primary keys")
+			return p.error(err, "Update-002", "fail to get primary keys")
 		}
-		return p.error(tx.Error, "UpdateData-004", primaryKeys)
+		return p.error(tx.Error, "Update-003", primaryKeysValue)
 	}
 
 	if tx.RowsAffected == 0 {
-		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+		primaryKeysValue, err := DAOMetadata.PrimaryKeysValues()
 		if err != nil {
-			return p.error(err, "UpdateData-005", "fail to get primary keys")
+			return p.error(err, "Update-004", "fail to get primary keys")
 		}
-		return p.error(gorm.ErrRecordNotFound, "UpdateData-006", primaryKeys)
+		return p.error(gorm.ErrRecordNotFound, "Update-005", primaryKeysValue)
 	}
 
 	return nil
 }
 
-func (p *postgresDBConnector) UpsertData(structPointer interface{}) error {
+func (p *postgresDBConnector) Upsert(structPointer interface{}) error {
 
-	if err := touchUpdatedAt(structPointer); err != nil {
-		return p.error(err, "UpsertData-001", "failed to update UpdatedAt")
+	DAOMetadata, err := parseDAO(p.GormDB, structPointer)
+	if err != nil {
+		return p.error(err, "Upsert-001", "failed to parse DAO")
 	}
 
-	primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
-	if err != nil {
-		return p.error(err, "UpsertData-002", "fail to get primary keys")
+	timeNow := time.Now().Unix()
+	if err := touchTimestamp(structPointer, "UpdatedAt", &timeNow); err != nil {
+		return p.error(err, "Upsert-002", "failed to update UpdatedAt")
 	}
 
-	updateableColumns, err := getUpdateableColumns(p.GormDB, structPointer)
+	primaryKeys, err := DAOMetadata.PrimaryKeysColumnName()
 	if err != nil {
-		return p.error(err, "UpsertData-003", primaryKeys)
+		return p.error(err, "Upsert-003", "fail to get primary keys")
+	}
+
+	updateableColumns, err := DAOMetadata.GetUpdateableColumnsName()
+	if err != nil {
+		return p.error(err, "Upsert-004", primaryKeys)
 	}
 
 	if err = p.GormDB.Clauses(clause.OnConflict{
 		Columns:   formatConflictColumns(primaryKeys),
 		DoUpdates: clause.AssignmentColumns(updateableColumns),
 	}).Create(structPointer).Error; err != nil {
-		return p.error(err, "UpsertData-004", primaryKeys)
+		return p.error(err, "Upsert-004", primaryKeys)
 	}
 
 	return nil
 }
 
-func (p *postgresDBConnector) DeleteData(structPointer interface{}) error {
-	err := p.GormDB.Delete(structPointer).Error
-	if err != nil {
-		primaryKeys, err := getPrimaryKeys(p.GormDB, structPointer)
+func (p *postgresDBConnector) HardDelete(structPointer interface{}) error {
+
+	tx := p.GormDB.Delete(structPointer)
+
+	if tx.Error != nil {
+		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 		if err != nil {
-			return p.error(err, "DeleteData-001", "fail to get primary keys")
+			return p.error(err, "HardDelete-001", "failed to parse DAO")
 		}
-		return p.error(err, "DeleteData-002", primaryKeys)
+		primaryKeysValues, err := DAOMetadata.PrimaryKeysValues()
+		if err != nil {
+			return p.error(err, "HardDelete-002", "fail to get primary keys")
+		}
+		return p.error(err, "HardDelete-003", primaryKeysValues)
+	}
+
+	if tx.RowsAffected == 0 {
+		return p.error(gorm.ErrRecordNotFound, "HardDelete-004")
 	}
 
 	return nil
 }
 
-// func (p *postgresDBConnector) GetDataByID(id interface{}, data interface{}) error {
-// 	return p.GormDB.First(data, id).Error
+func (p *postgresDBConnector) SoftDelete(structPointer interface{}) error {
+
+	timeNow := time.Now().Unix()
+	if err := touchTimestamp(structPointer, "DeletedAt", &timeNow); err != nil {
+		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
+		if err != nil {
+			return p.error(err, "HardDelete-001", "failed to parse DAO")
+		}
+		primaryKeysValues, err := DAOMetadata.PrimaryKeysValues()
+		if err != nil {
+			return p.error(err, "SoftDelete-001", "fail to get primary keys")
+		}
+		return p.error(err, "SoftDelete-002", primaryKeysValues)
+	}
+
+	return p.Update(structPointer, "DeletedAt")
+}
+
+func (p *postgresDBConnector) Restore(structPointer interface{}) error {
+
+	if err := touchTimestamp(structPointer, "DeletedAt", nil); err != nil {
+		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
+		if err != nil {
+			return p.error(err, "HardDelete-001", "failed to parse DAO")
+		}
+		primaryKeysValues, err := DAOMetadata.PrimaryKeysValues()
+		if err != nil {
+			return p.error(err, "Restore-001", "fail to get primary keys")
+		}
+		return p.error(err, "Restore-002", primaryKeysValues)
+	}
+
+	return p.Update(structPointer, "DeletedAt")
+
+}
+
+// func GetByPrimaryKey(structPointer interface{}) error {
+
 // }
 
-func getSchema(db *gorm.DB, structPointer interface{}) (*schema.Schema, error) {
-	statement := &gorm.Statement{
-		DB: db,
+func (p *postgresDBConnector) Exists(structPointer interface{}) (bool, error) {
+	tx := p.GormDB.Take(structPointer)
+
+	if tx.Error == nil {
+		return true, nil
 	}
 
-	if err := statement.Parse(structPointer); err != nil {
-		return nil, err
+	if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
+		return false, nil
 	}
 
-	return statement.Schema, nil
+	return false, p.error(tx.Error, "Exists-001")
 }
 
-func getColumnName(db *gorm.DB, structPointer interface{}, structFields ...string) ([]string, error) {
-	dataSchema, err := getSchema(db, structPointer)
+func (p *postgresDBConnector) Ping(timeLimitSecond int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeLimitSecond)*time.Second)
+	defer cancel()
+	if err := p.ClientDB.PingContext(ctx); err != nil {
+		return p.error(err, "Ping-001", fmt.Sprintf("failed to connect to database within %d second", timeLimitSecond))
+	}
+	return nil
+}
+
+func (p *postgresDBConnector) Close() error {
+	if err := p.ClientDB.Close(); err != nil {
+		return p.error(err, "Close-001", "failed to close database connection")
+	}
+	return nil
+}
+
+func (p *postgresDBConnector) GetByPrimaryKeys(structPointer interface{}) error {
+	metadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
-		return nil, err
+		return p.error(err, "GetByPrimaryKeys-001", "failed to parse DAO")
 	}
 
-	dbColumns := make([]string, 0, len(structFields))
-	for _, field := range structFields {
-		columnDB := dataSchema.LookUpField(field)
-		if columnDB == nil {
-			return nil, fmt.Errorf("field %q does not exist in model %s", field, dataSchema.Name)
-		}
-
-		dbColumns = append(dbColumns, columnDB.DBName)
-	}
-
-	return dbColumns, nil
-}
-
-func getPrimaryKeys(db *gorm.DB, structPointer interface{}) ([]string, error) {
-	schema, err := getSchema(db, structPointer)
+	primaryKeys, err := metadata.PrimaryKeysValues()
 	if err != nil {
-		return nil, err
+		return p.error(err, "GetByPrimaryKeys-002", "failed to get primary keys")
 	}
 
-	primaryKeys := make([]string, 0, len(schema.PrimaryFields))
-	for _, field := range schema.PrimaryFields {
-		primaryKeys = append(primaryKeys, field.DBName)
+	tx := p.GormDB.Where(primaryKeys).First(structPointer)
+
+	if tx.Error != nil {
+		return p.error(tx.Error, "GetByPrimaryKeys-003", primaryKeys)
 	}
-
-	return primaryKeys, nil
-}
-
-func getUpdateableColumns(db *gorm.DB, structPointer interface{}) ([]string, error) {
-
-	const EMPTYCOLUMNNAME = ""
-
-	schema, err := getSchema(db, structPointer)
-	if err != nil {
-		return nil, err
-	}
-
-	updateableColumns := make([]string, 0)
-	for _, field := range schema.Fields {
-		if field.PrimaryKey {
-			continue
-		}
-
-		if _, ok := field.TagSettings["AUTOCREATETIME"]; ok {
-			continue
-		}
-
-		if strings.TrimSpace(field.DBName) == EMPTYCOLUMNNAME {
-			continue
-		}
-
-		updateableColumns = append(updateableColumns, field.DBName)
-	}
-
-	return updateableColumns, nil
-}
-
-func formatConflictColumns(primaryKeys []string) []clause.Column {
-	columns := make([]clause.Column, 0, len(primaryKeys))
-
-	for _, key := range primaryKeys {
-		columns = append(columns, clause.Column{
-			Name: key,
-		})
-	}
-
-	return columns
-}
-
-func touchUpdatedAt(structPointer interface{}) error {
-	if structPointer == nil {
-		return fmt.Errorf("structPointer is nil")
-	}
-
-	v := reflect.ValueOf(structPointer)
-
-	if v.Kind() != reflect.Ptr {
-		return fmt.Errorf("structPointer must be a pointer")
-	}
-
-	v = v.Elem()
-	if v.Kind() != reflect.Struct {
-		return fmt.Errorf("structPointer must point to a struct")
-	}
-
-	field := v.FieldByName("UpdatedAt")
-	if !field.IsValid() {
-		return fmt.Errorf("field UpdatedAt does not exist")
-	}
-
-	if !field.CanSet() {
-		return fmt.Errorf("field UpdatedAt cannot be set")
-	}
-
-	if field.Kind() != reflect.Int64 {
-		return fmt.Errorf("field UpdatedAt must be int64")
-	}
-
-	field.SetInt(time.Now().Unix())
 
 	return nil
 }

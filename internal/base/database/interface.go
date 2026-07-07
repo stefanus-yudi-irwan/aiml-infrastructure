@@ -7,4 +7,8 @@ type IDBConnector interface {
 	HardDelete(structPointer interface{}) error
 	SoftDelete(structPointer interface{}) error
 	Restore(structPointer interface{}) error
+	GetByPrimaryKeys(structPointer interface{}) error
+	Exists(structPointer interface{}) (bool, error)
+	Ping(timeLimitSecond int) error
+	Close() error
 }

@@ -1,7 +1,6 @@
 package postgresql
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -61,12 +60,7 @@ func (p *PostgresSuite) SetupSuite() {
 	p.DBConnector, err = NewPostgresDBConnector(connectionPath, PgMaxConnections)
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.ClientDB.Ping()
-	assert.NoError(p.T(), err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-	err = p.DBConnector.ClientDB.PingContext(ctx)
+	err = p.DBConnector.Ping(1)
 	assert.NoError(p.T(), err)
 
 	initSchema, err := os.ReadFile("test/test_schema.up.sql")
@@ -78,23 +72,24 @@ func (p *PostgresSuite) SetupSuite() {
 
 func (p *PostgresSuite) TearDownSuite() {
 
-	// endSchema, err := os.ReadFile("test/test_schema.down.sql")
-	// assert.NoError(p.T(), err)
-
-	// err = p.DBConnector.GormDB.Exec(string(endSchema)).Error
-	// assert.NoError(p.T(), err)
-
-	connection, err := p.DBConnector.GormDB.DB()
+	endSchema, err := os.ReadFile("test/test_schema.down.sql")
 	assert.NoError(p.T(), err)
-	err = connection.Close()
+
+	err = p.DBConnector.GormDB.Exec(string(endSchema)).Error
 	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Close()
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Ping(1)
+	assert.Error(p.T(), err)
 }
 
 func TestPostgresSuite(t *testing.T) {
 	suite.Run(t, new(PostgresSuite))
 }
 
-func (p *PostgresSuite) Test001InsertData() {
+func (p *PostgresSuite) Test001Insert() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -102,11 +97,11 @@ func (p *PostgresSuite) Test001InsertData() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.InsertData(&customer)
+	err := p.DBConnector.Insert(&customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test002InsertDataWithConflict() {
+func (p *PostgresSuite) Test002InsertWithConflict() {
 
 	ID := uuid.New().String()
 
@@ -116,17 +111,17 @@ func (p *PostgresSuite) Test002InsertDataWithConflict() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.InsertData(&customer)
+	err := p.DBConnector.Insert(&customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
 	customer.LastName = "Smith"
 
-	err = p.DBConnector.InsertData(&customer)
+	err = p.DBConnector.Insert(&customer)
 	assert.Error(p.T(), err)
 }
 
-func (p *PostgresSuite) Test003UpdateData() {
+func (p *PostgresSuite) Test003UpdateExistingRecord() {
 
 	ID := uuid.New().String()
 
@@ -136,24 +131,18 @@ func (p *PostgresSuite) Test003UpdateData() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.InsertData(&customer)
+	err := p.DBConnector.Insert(&customer)
 	assert.NoError(p.T(), err)
-
-	fmt.Println(customer.CreatedAt)
-	fmt.Println(customer.UpdatedAt)
 
 	customer.FirstName = "Jane"
 	customer.LastName = "Smith"
 
 	time.Sleep(2 * time.Second)
-	err = p.DBConnector.UpdateData(&customer, "FirstName", "LastName")
+	err = p.DBConnector.Update(&customer, "FirstName", "LastName")
 	assert.NoError(p.T(), err)
-
-	fmt.Println(customer.CreatedAt)
-	fmt.Println(customer.UpdatedAt)
 }
 
-func (p *PostgresSuite) Test004UpdateDataWithConflict() {
+func (p *PostgresSuite) Test004UpdateWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -161,11 +150,11 @@ func (p *PostgresSuite) Test004UpdateDataWithConflict() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.UpdateData(&customer)
+	err := p.DBConnector.Update(&customer)
 	assert.Error(p.T(), err)
 }
 
-func (p *PostgresSuite) Test005UpsertData() {
+func (p *PostgresSuite) Test005UpsertNewRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -173,11 +162,11 @@ func (p *PostgresSuite) Test005UpsertData() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.UpsertData(&customer)
+	err := p.DBConnector.Upsert(&customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test005UpsertDataWithConflict() {
+func (p *PostgresSuite) Test006UpsertExistingRecord() {
 
 	ID := uuid.New().String()
 
@@ -187,7 +176,7 @@ func (p *PostgresSuite) Test005UpsertDataWithConflict() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.UpsertData(&customer)
+	err := p.DBConnector.Upsert(&customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
@@ -195,11 +184,11 @@ func (p *PostgresSuite) Test005UpsertDataWithConflict() {
 	customer.FirstName = "Julia"
 	customer.LastName = "Wiwin"
 
-	err = p.DBConnector.UpsertData(&customer)
+	err = p.DBConnector.Upsert(&customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test005DeleteData() {
+func (p *PostgresSuite) Test007HardDelete() {
 
 	ID := uuid.New().String()
 
@@ -209,14 +198,137 @@ func (p *PostgresSuite) Test005DeleteData() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.InsertData(&customer)
+	err := p.DBConnector.Insert(&customer)
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.DeleteData(&customer)
+	err = p.DBConnector.HardDelete(&customer)
 	assert.NoError(p.T(), err)
 }
 
-func TestFormatConflictColumns(t *testing.T) {
-	test := formatConflictColumns([]string{"id"})
-	fmt.Println(test)
+func (p *PostgresSuite) Test008HardDeleteWithoutRecord() {
+
+	customer := CustomerDAO{
+		ID:        uuid.NewString(),
+		FirstName: "John",
+		LastName:  "Smith",
+	}
+
+	err := p.DBConnector.HardDelete(&customer)
+	assert.Error(p.T(), err)
+}
+
+func (p *PostgresSuite) Test009SoftDelete() {
+
+	customer := CustomerDAO{
+		ID:        uuid.New().String(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	err := p.DBConnector.Insert(&customer)
+	assert.NoError(p.T(), err)
+
+	time.Sleep(2 * time.Second)
+
+	err = p.DBConnector.SoftDelete(&customer)
+	assert.NoError(p.T(), err)
+}
+
+func (p *PostgresSuite) Test010SoftDeleteWithoutRecord() {
+
+	customer := CustomerDAO{
+		ID:        uuid.NewString(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	err := p.DBConnector.SoftDelete(&customer)
+	assert.Error(p.T(), err)
+}
+
+func (p *PostgresSuite) Test011RestoreExistingRecord() {
+	customer := CustomerDAO{
+		ID:        uuid.New().String(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	err := p.DBConnector.Insert(&customer)
+	assert.NoError(p.T(), err)
+
+	time.Sleep(2 * time.Second)
+
+	err = p.DBConnector.SoftDelete(&customer)
+	assert.NoError(p.T(), err)
+
+	time.Sleep(2 * time.Second)
+
+	err = p.DBConnector.Restore(&customer)
+	assert.NoError(p.T(), err)
+}
+
+func (p *PostgresSuite) Test012RestoreWithoutRecord() {
+
+	customer := CustomerDAO{
+		ID:        uuid.New().String(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	err := p.DBConnector.Restore(&customer)
+	assert.Error(p.T(), err)
+
+}
+
+func (p *PostgresSuite) Test013Exists() {
+
+	customer := CustomerDAO{
+		ID:        uuid.New().String(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	err := p.DBConnector.Insert(&customer)
+	assert.NoError(p.T(), err)
+
+	isExists, err := p.DBConnector.Exists(&customer)
+	assert.NoError(p.T(), err)
+	assert.Equal(p.T(), isExists, true)
+}
+
+func (p *PostgresSuite) Test014ExistsWithoutRecord() {
+
+	customer := CustomerDAO{
+		ID:        uuid.New().String(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	isExists, err := p.DBConnector.Exists(&customer)
+	assert.NoError(p.T(), err)
+	assert.Equal(p.T(), isExists, false)
+
+}
+
+func (p *PostgresSuite) Test015GetByPrimaryKeys() {
+
+	ID := uuid.NewString()
+
+	customer := CustomerDAO{
+		ID:        ID,
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+
+	err := p.DBConnector.Insert(&customer)
+	assert.NoError(p.T(), err)
+
+	emptyCustomer := CustomerDAO{
+		ID: ID,
+	}
+
+	err = p.DBConnector.GetByPrimaryKeys(&emptyCustomer)
+	assert.NoError(p.T(), err)
+	assert.Equal(p.T(), emptyCustomer.FirstName, "Stefanus")
+	assert.Equal(p.T(), emptyCustomer.LastName, "Yudi")
 }
