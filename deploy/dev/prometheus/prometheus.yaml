@@ -2,6 +2,7 @@ global:
   scrape_interval: 15s
   scrape_timeout: 10s
   evaluation_interval: 15s
+
 alerting:
   alertmanagers:
   - static_configs:
@@ -9,6 +10,7 @@ alerting:
     scheme: http
     timeout: 10s
     api_version: v1
+
 scrape_configs:    
 - job_name: go_application
   honor_timestamps: true
@@ -18,3 +20,12 @@ scrape_configs:
   static_configs:
   - targets:
     - 172.28.210.232:8081
+
+- job_name: postgresql
+  honor_timestamps: true
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  metrics_path: /metrics
+  static_configs:
+  - targets:
+    - postgresql-exporter:9187

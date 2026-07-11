@@ -1,5 +1,5 @@
 version: '3.8'
-
+name: aiml-infrastructure
 services:
 
   postgres:
@@ -17,10 +17,12 @@ services:
     ports:
       - ${POSTGRES_PORT}:5432
     healthcheck:
-      test: ["CMD", "pg_isready", "-p", "${POSTGRES_PORT}", "-U", "${POSTGRES_USER}", "-db", "${POSTGRES_DB}"]
+      test: ["CMD", "pg_isready", "-p", "${POSTGRES_PORT}", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 3
+    networks:
+      - monitoring
 
   pgadmin:
     image: dpage/pgadmin4
@@ -42,6 +44,24 @@ services:
     volumes:
       - ./prometheus:/etc/prometheus
       - prom_data:/prometheus
+    networks:
+      - monitoring
+
+  postgresql-exporter:
+    image: prometheuscommunity/postgres-exporter
+    container_name: aiml_postgres_exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      prometheus:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - monitoring
 
   grafana:
     image: grafana/grafana
@@ -52,8 +72,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=grafana
+      - GF_USER_ALLOW_SIGN_UP=false
     volumes:
       - ./grafana:/etc/grafana/provisioning/datasources
+    networks:
+      - monitoring
   
   minio:
     restart: unless-stopped
@@ -107,3 +130,7 @@ services:
 
 volumes:
   prom_data:
+
+networks:
+  monitoring:
+    driver: bridge
