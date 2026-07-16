@@ -1,6 +1,7 @@
-package postgresql
+package mysql
 
 import (
+	"aiml-infrastructure/internal/base/database"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"gorm.io/driver/mysql"
 )
 
 type TimestampDAO struct {
@@ -20,59 +22,57 @@ type TimestampDAO struct {
 }
 
 type CustomerDAO struct {
-	ID        string `gorm:"type:uuid;primaryKey"`
+	ID        string `gorm:"type:char(36);primaryKey"`
 	FirstName string `gorm:"column:first_name"`
 	LastName  string `gorm:"column:last_name"`
 	TimestampDAO
 }
 
 func (CustomerDAO) TableName() string {
-	return "test.customer"
+	return "customer"
 }
 
-type PostgresSuite struct {
+type DBSuite struct {
 	suite.Suite
-	DBConnector *postgresDBConnector
+	DBConnector *database.DBConnector
 }
 
-func (p *PostgresSuite) SetupSuite() {
-	err := godotenv.Load("test/.env")
+func (p *DBSuite) SetupSuite() {
+	err := godotenv.Load("init/.env")
 	assert.NoError(p.T(), err)
 
-	PgUser := os.Getenv("POSTGRES_USER")
-	PgPassword := os.Getenv("POSTGRES_PASSWORD")
-	PgHost := os.Getenv("POSTGRES_HOST")
-	PgPort := os.Getenv("POSTGRES_PORT")
-	PgDB := os.Getenv("POSTGRES_DB")
-	PgSSLMode := os.Getenv("POSTGRES_SSL_MODE")
-	PgMaxConnections, err := strconv.Atoi(os.Getenv("POSTGRES_MAX_CONNECTIONS"))
+	mysqlUser := os.Getenv("MYSQL_USER")
+	mysqlPassword := os.Getenv("MYSQL_PASSWORD")
+	mysqlHost := os.Getenv("MYSQL_HOST")
+	mysqlPort := os.Getenv("MYSQL_PORT")
+	mysqlDB := os.Getenv("MYSQL_DB")
+	MaxConnections, err := strconv.Atoi(os.Getenv("DB_MAX_CONNECTIONS"))
 	assert.NoError(p.T(), err)
 	connectionPath := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		PgUser,
-		PgPassword,
-		PgHost,
-		PgPort,
-		PgDB,
-		PgSSLMode,
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		mysqlUser,
+		mysqlPassword,
+		mysqlHost,
+		mysqlPort,
+		mysqlDB,
 	)
 
-	p.DBConnector, err = NewPostgresDBConnector(connectionPath, PgMaxConnections)
+	p.DBConnector, err = database.NewDBConnector(mysql.Open(connectionPath), MaxConnections)
 	assert.NoError(p.T(), err)
 
 	err = p.DBConnector.Ping(1)
 	assert.NoError(p.T(), err)
 
-	initSchema, err := os.ReadFile("test/test_schema.up.sql")
+	initSchema, err := os.ReadFile("init/init.up.sql")
 	assert.NoError(p.T(), err)
 
 	err = p.DBConnector.GormDB.Exec(string(initSchema)).Error
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) TearDownSuite() {
+func (p *DBSuite) TearDownSuite() {
 
-	endSchema, err := os.ReadFile("test/test_schema.down.sql")
+	endSchema, err := os.ReadFile("init/init.down.sql")
 	assert.NoError(p.T(), err)
 
 	err = p.DBConnector.GormDB.Exec(string(endSchema)).Error
@@ -85,11 +85,11 @@ func (p *PostgresSuite) TearDownSuite() {
 	assert.Error(p.T(), err)
 }
 
-func TestPostgresSuite(t *testing.T) {
-	suite.Run(t, new(PostgresSuite))
+func TestMySQLSuite(t *testing.T) {
+	suite.Run(t, new(DBSuite))
 }
 
-func (p *PostgresSuite) Test001Insert() {
+func (p *DBSuite) Test001Insert() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -101,7 +101,7 @@ func (p *PostgresSuite) Test001Insert() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test002InsertWithConflict() {
+func (p *DBSuite) Test002InsertWithConflict() {
 
 	ID := uuid.New().String()
 
@@ -121,7 +121,7 @@ func (p *PostgresSuite) Test002InsertWithConflict() {
 	assert.Error(p.T(), err)
 }
 
-func (p *PostgresSuite) Test003UpdateExistingRecord() {
+func (p *DBSuite) Test003UpdateExistingRecord() {
 
 	ID := uuid.New().String()
 
@@ -142,7 +142,7 @@ func (p *PostgresSuite) Test003UpdateExistingRecord() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test004UpdateWithoutRecord() {
+func (p *DBSuite) Test004UpdateWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -154,7 +154,7 @@ func (p *PostgresSuite) Test004UpdateWithoutRecord() {
 	assert.Error(p.T(), err)
 }
 
-func (p *PostgresSuite) Test005UpsertNewRecord() {
+func (p *DBSuite) Test005UpsertNewRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -166,7 +166,7 @@ func (p *PostgresSuite) Test005UpsertNewRecord() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test006UpsertExistingRecord() {
+func (p *DBSuite) Test006UpsertExistingRecord() {
 
 	ID := uuid.New().String()
 
@@ -188,7 +188,7 @@ func (p *PostgresSuite) Test006UpsertExistingRecord() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test007HardDelete() {
+func (p *DBSuite) Test007HardDelete() {
 
 	ID := uuid.New().String()
 
@@ -205,7 +205,7 @@ func (p *PostgresSuite) Test007HardDelete() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test008HardDeleteWithoutRecord() {
+func (p *DBSuite) Test008HardDeleteWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.NewString(),
@@ -217,7 +217,7 @@ func (p *PostgresSuite) Test008HardDeleteWithoutRecord() {
 	assert.Error(p.T(), err)
 }
 
-func (p *PostgresSuite) Test009SoftDelete() {
+func (p *DBSuite) Test009SoftDelete() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -234,7 +234,7 @@ func (p *PostgresSuite) Test009SoftDelete() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test010SoftDeleteWithoutRecord() {
+func (p *DBSuite) Test010SoftDeleteWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.NewString(),
@@ -246,7 +246,7 @@ func (p *PostgresSuite) Test010SoftDeleteWithoutRecord() {
 	assert.Error(p.T(), err)
 }
 
-func (p *PostgresSuite) Test011RestoreExistingRecord() {
+func (p *DBSuite) Test011RestoreExistingRecord() {
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
 		FirstName: "Stefanus",
@@ -267,7 +267,7 @@ func (p *PostgresSuite) Test011RestoreExistingRecord() {
 	assert.NoError(p.T(), err)
 }
 
-func (p *PostgresSuite) Test012RestoreWithoutRecord() {
+func (p *DBSuite) Test012RestoreWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -280,7 +280,7 @@ func (p *PostgresSuite) Test012RestoreWithoutRecord() {
 
 }
 
-func (p *PostgresSuite) Test013Exists() {
+func (p *DBSuite) Test013Exists() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -296,7 +296,7 @@ func (p *PostgresSuite) Test013Exists() {
 	assert.Equal(p.T(), isExists, true)
 }
 
-func (p *PostgresSuite) Test014ExistsWithoutRecord() {
+func (p *DBSuite) Test014ExistsWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -310,7 +310,7 @@ func (p *PostgresSuite) Test014ExistsWithoutRecord() {
 
 }
 
-func (p *PostgresSuite) Test015GetByPrimaryKeys() {
+func (p *DBSuite) Test015GetByPrimaryKeys() {
 
 	ID := uuid.NewString()
 

@@ -1,4 +1,4 @@
-package postgresql
+package database
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
@@ -22,15 +21,13 @@ var gormConfig = &gorm.Config{
 	},
 }
 
-type postgresDBConnector struct {
+type DBConnector struct {
 	GormDB   *gorm.DB
 	ClientDB *sql.DB
 }
 
-func NewPostgresDBConnector(connectionPath string, numberOfConnections int) (*postgresDBConnector, error) {
-	var err error
-
-	GormDB, err := gorm.Open(postgres.Open(connectionPath), gormConfig)
+func NewDBConnector(dialector gorm.Dialector, numberOfConnections int) (*DBConnector, error) {
+	GormDB, err := gorm.Open(dialector, gormConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -45,17 +42,17 @@ func NewPostgresDBConnector(connectionPath string, numberOfConnections int) (*po
 	ClientDB.SetConnMaxLifetime(time.Hour)
 	ClientDB.SetConnMaxIdleTime(10 * time.Minute)
 
-	return &postgresDBConnector{
+	return &DBConnector{
 		GormDB:   GormDB,
 		ClientDB: ClientDB,
 	}, nil
 }
 
-func (p *postgresDBConnector) error(err error, method string, params ...interface{}) error {
-	return fmt.Errorf("postgresDBConnector.(%v)(%v) %w", method, params, err)
+func (p *DBConnector) error(err error, method string, params ...interface{}) error {
+	return fmt.Errorf("DBConnector.(%v)(%v) %w", method, params, err)
 }
 
-func (p *postgresDBConnector) Insert(structPointer interface{}) error {
+func (p *DBConnector) Insert(structPointer interface{}) error {
 
 	if err := p.GormDB.Create(structPointer).Error; err != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
@@ -71,7 +68,7 @@ func (p *postgresDBConnector) Insert(structPointer interface{}) error {
 	return nil
 }
 
-func (p *postgresDBConnector) Update(structPointer interface{}, structFields ...string) error {
+func (p *DBConnector) Update(structPointer interface{}, structFields ...string) error {
 
 	DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
@@ -105,7 +102,7 @@ func (p *postgresDBConnector) Update(structPointer interface{}, structFields ...
 	return nil
 }
 
-func (p *postgresDBConnector) Upsert(structPointer interface{}) error {
+func (p *DBConnector) Upsert(structPointer interface{}) error {
 
 	DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
@@ -131,13 +128,13 @@ func (p *postgresDBConnector) Upsert(structPointer interface{}) error {
 		Columns:   formatConflictColumns(primaryKeys),
 		DoUpdates: clause.AssignmentColumns(updateableColumns),
 	}).Create(structPointer).Error; err != nil {
-		return p.error(err, "Upsert-004", primaryKeys)
+		return p.error(err, "Upsert-005", primaryKeys)
 	}
 
 	return nil
 }
 
-func (p *postgresDBConnector) HardDelete(structPointer interface{}) error {
+func (p *DBConnector) HardDelete(structPointer interface{}) error {
 
 	tx := p.GormDB.Delete(structPointer)
 
@@ -160,7 +157,7 @@ func (p *postgresDBConnector) HardDelete(structPointer interface{}) error {
 	return nil
 }
 
-func (p *postgresDBConnector) SoftDelete(structPointer interface{}) error {
+func (p *DBConnector) SoftDelete(structPointer interface{}) error {
 
 	timeNow := time.Now().Unix()
 	if err := touchTimestamp(structPointer, "DeletedAt", &timeNow); err != nil {
@@ -178,7 +175,7 @@ func (p *postgresDBConnector) SoftDelete(structPointer interface{}) error {
 	return p.Update(structPointer, "DeletedAt")
 }
 
-func (p *postgresDBConnector) Restore(structPointer interface{}) error {
+func (p *DBConnector) Restore(structPointer interface{}) error {
 
 	if err := touchTimestamp(structPointer, "DeletedAt", nil); err != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
@@ -196,11 +193,7 @@ func (p *postgresDBConnector) Restore(structPointer interface{}) error {
 
 }
 
-// func GetByPrimaryKey(structPointer interface{}) error {
-
-// }
-
-func (p *postgresDBConnector) Exists(structPointer interface{}) (bool, error) {
+func (p *DBConnector) Exists(structPointer interface{}) (bool, error) {
 	tx := p.GormDB.Take(structPointer)
 
 	if tx.Error == nil {
@@ -214,7 +207,7 @@ func (p *postgresDBConnector) Exists(structPointer interface{}) (bool, error) {
 	return false, p.error(tx.Error, "Exists-001")
 }
 
-func (p *postgresDBConnector) Ping(timeLimitSecond int) error {
+func (p *DBConnector) Ping(timeLimitSecond int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeLimitSecond)*time.Second)
 	defer cancel()
 	if err := p.ClientDB.PingContext(ctx); err != nil {
@@ -223,14 +216,14 @@ func (p *postgresDBConnector) Ping(timeLimitSecond int) error {
 	return nil
 }
 
-func (p *postgresDBConnector) Close() error {
+func (p *DBConnector) Close() error {
 	if err := p.ClientDB.Close(); err != nil {
 		return p.error(err, "Close-001", "failed to close database connection")
 	}
 	return nil
 }
 
-func (p *postgresDBConnector) GetByPrimaryKeys(structPointer interface{}) error {
+func (p *DBConnector) GetByPrimaryKeys(structPointer interface{}) error {
 	metadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
 		return p.error(err, "GetByPrimaryKeys-001", "failed to parse DAO")

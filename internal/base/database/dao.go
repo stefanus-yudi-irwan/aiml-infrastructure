@@ -1,4 +1,4 @@
-package postgresql
+package database
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-type DAOMetadata struct {
+type DAO struct {
 	Schema       *schema.Schema
 	ReflectValue reflect.Value
 }
 
-func parseDAO(db *gorm.DB, structPointer interface{}) (*DAOMetadata, error) {
+func parseDAO(db *gorm.DB, structPointer interface{}) (*DAO, error) {
 
 	statement := &gorm.Statement{
 		DB: db,
@@ -30,13 +30,13 @@ func parseDAO(db *gorm.DB, structPointer interface{}) (*DAOMetadata, error) {
 		reflectValue = reflectValue.Elem()
 	}
 
-	return &DAOMetadata{
+	return &DAO{
 		Schema:       statement.Schema,
 		ReflectValue: reflectValue,
 	}, nil
 }
 
-func (d *DAOMetadata) PrimaryKeysColumnName() ([]string, error) {
+func (d *DAO) PrimaryKeysColumnName() ([]string, error) {
 
 	primaryKeys := make([]string, 0, len(d.Schema.PrimaryFields))
 	for _, field := range d.Schema.PrimaryFields {
@@ -46,7 +46,7 @@ func (d *DAOMetadata) PrimaryKeysColumnName() ([]string, error) {
 	return primaryKeys, nil
 }
 
-func (d *DAOMetadata) PrimaryKeysValues() (map[string]interface{}, error) {
+func (d *DAO) PrimaryKeysValues() (map[string]interface{}, error) {
 
 	values := make(map[string]interface{}, len(d.Schema.PrimaryFields))
 
@@ -58,7 +58,7 @@ func (d *DAOMetadata) PrimaryKeysValues() (map[string]interface{}, error) {
 	return values, nil
 }
 
-func (d *DAOMetadata) GetSelectedColumnName(structFields ...string) ([]string, error) {
+func (d *DAO) GetSelectedColumnName(structFields ...string) ([]string, error) {
 
 	dbColumns := make([]string, 0, len(structFields))
 	for _, field := range structFields {
@@ -73,7 +73,7 @@ func (d *DAOMetadata) GetSelectedColumnName(structFields ...string) ([]string, e
 	return dbColumns, nil
 }
 
-func (d *DAOMetadata) GetUpdateableColumnsName() ([]string, error) {
+func (d *DAO) GetUpdateableColumnsName() ([]string, error) {
 
 	const EMPTYCOLUMNNAME = ""
 
