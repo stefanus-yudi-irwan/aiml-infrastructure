@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -36,17 +37,38 @@ func parseDAO(db *gorm.DB, structPointer interface{}) (*DAO, error) {
 	}, nil
 }
 
-func (d *DAO) PrimaryKeysColumnName() ([]string, error) {
+func (d *DAO) TableName() string {
+	return d.Schema.Table
+}
+
+func (d *DAO) ColumnNames() []string {
+	columns := make([]string, 0, len(d.Schema.DBNames))
+	columns = append(columns, d.Schema.DBNames...)
+	return columns
+}
+
+func (d *DAO) ColumnValues() []interface{} {
+	values := make([]interface{}, 0, len(d.Schema.Fields))
+
+	for _, field := range d.Schema.Fields {
+		value, _ := field.ValueOf(context.Background(), d.ReflectValue)
+		values = append(values, value)
+	}
+
+	return values
+}
+
+func (d *DAO) PrimaryKeysColumnName() []string {
 
 	primaryKeys := make([]string, 0, len(d.Schema.PrimaryFields))
 	for _, field := range d.Schema.PrimaryFields {
 		primaryKeys = append(primaryKeys, field.DBName)
 	}
 
-	return primaryKeys, nil
+	return primaryKeys
 }
 
-func (d *DAO) PrimaryKeysValues() (map[string]interface{}, error) {
+func (d *DAO) PrimaryKeysValues() map[string]interface{} {
 
 	values := make(map[string]interface{}, len(d.Schema.PrimaryFields))
 
@@ -55,7 +77,7 @@ func (d *DAO) PrimaryKeysValues() (map[string]interface{}, error) {
 		values[field.DBName] = value
 	}
 
-	return values, nil
+	return values
 }
 
 func (d *DAO) GetSelectedColumnName(structFields ...string) ([]string, error) {
@@ -73,7 +95,7 @@ func (d *DAO) GetSelectedColumnName(structFields ...string) ([]string, error) {
 	return dbColumns, nil
 }
 
-func (d *DAO) GetUpdateableColumnsName() ([]string, error) {
+func (d *DAO) GetUpdateableColumnsName() []string {
 
 	const EMPTYCOLUMNNAME = ""
 
@@ -94,7 +116,7 @@ func (d *DAO) GetUpdateableColumnsName() ([]string, error) {
 		updateableColumns = append(updateableColumns, field.DBName)
 	}
 
-	return updateableColumns, nil
+	return updateableColumns
 }
 
 func formatConflictColumns(primaryKeys []string) []clause.Column {

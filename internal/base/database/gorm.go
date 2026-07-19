@@ -59,11 +59,7 @@ func (p *DBConnector) Insert(structPointer interface{}) error {
 		if err != nil {
 			return p.error(err, "Insert-001", "failed to parse DAO")
 		}
-		primaryKeysValue, err := DAOMetadata.PrimaryKeysValues()
-		if err != nil {
-			return p.error(err, "Insert-001", "fail to get primary keys")
-		}
-		return p.error(err, "Insert-002", primaryKeysValue)
+		return p.error(err, "Insert-002", DAOMetadata.PrimaryKeysValues())
 	}
 	return nil
 }
@@ -84,19 +80,11 @@ func (p *DBConnector) Update(structPointer interface{}, structFields ...string) 
 		Updates(structPointer)
 
 	if tx.Error != nil {
-		primaryKeysValue, err := DAOMetadata.PrimaryKeysValues()
-		if err != nil {
-			return p.error(err, "Update-002", "fail to get primary keys")
-		}
-		return p.error(tx.Error, "Update-003", primaryKeysValue)
+		return p.error(tx.Error, "Update-003", DAOMetadata.PrimaryKeysValues())
 	}
 
 	if tx.RowsAffected == 0 {
-		primaryKeysValue, err := DAOMetadata.PrimaryKeysValues()
-		if err != nil {
-			return p.error(err, "Update-004", "fail to get primary keys")
-		}
-		return p.error(gorm.ErrRecordNotFound, "Update-005", primaryKeysValue)
+		return p.error(gorm.ErrRecordNotFound, "Update-005", DAOMetadata.PrimaryKeysValues())
 	}
 
 	return nil
@@ -114,21 +102,34 @@ func (p *DBConnector) Upsert(structPointer interface{}) error {
 		return p.error(err, "Upsert-002", "failed to update UpdatedAt")
 	}
 
-	primaryKeys, err := DAOMetadata.PrimaryKeysColumnName()
-	if err != nil {
-		return p.error(err, "Upsert-003", "fail to get primary keys")
-	}
+	primaryKeys := DAOMetadata.PrimaryKeysColumnName()
+	updateableColumns := DAOMetadata.GetUpdateableColumnsName()
 
-	updateableColumns, err := DAOMetadata.GetUpdateableColumnsName()
-	if err != nil {
-		return p.error(err, "Upsert-004", primaryKeys)
-	}
+	switch p.GormDB.Dialector.Name() {
 
-	if err = p.GormDB.Clauses(clause.OnConflict{
-		Columns:   formatConflictColumns(primaryKeys),
-		DoUpdates: clause.AssignmentColumns(updateableColumns),
-	}).Create(structPointer).Error; err != nil {
-		return p.error(err, "Upsert-005", primaryKeys)
+	case "sqlserver": // due to sqlserver gorm library bug
+
+		mergeQueryBuilder := SQLServerMergeBuilder{
+			Table:         DAOMetadata.TableName(),
+			Columns:       DAOMetadata.ColumnNames(),
+			PrimaryKeys:   primaryKeys,
+			UpdateColumns: updateableColumns,
+		}
+
+		mergeQuery := mergeQueryBuilder.Build()
+		columnValues := DAOMetadata.ColumnValues()
+
+		if err = p.GormDB.Exec(mergeQuery, columnValues...).Error; err != nil {
+			return p.error(err, "Upsert-005", primaryKeys)
+		}
+
+	default:
+		if err = p.GormDB.Clauses(clause.OnConflict{
+			Columns:   formatConflictColumns(primaryKeys),
+			DoUpdates: clause.AssignmentColumns(updateableColumns),
+		}).Create(structPointer).Error; err != nil {
+			return p.error(err, "Upsert-006", primaryKeys)
+		}
 	}
 
 	return nil
@@ -143,11 +144,7 @@ func (p *DBConnector) HardDelete(structPointer interface{}) error {
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
 		}
-		primaryKeysValues, err := DAOMetadata.PrimaryKeysValues()
-		if err != nil {
-			return p.error(err, "HardDelete-002", "fail to get primary keys")
-		}
-		return p.error(err, "HardDelete-003", primaryKeysValues)
+		return p.error(err, "HardDelete-003", DAOMetadata.PrimaryKeysValues())
 	}
 
 	if tx.RowsAffected == 0 {
@@ -165,11 +162,7 @@ func (p *DBConnector) SoftDelete(structPointer interface{}) error {
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
 		}
-		primaryKeysValues, err := DAOMetadata.PrimaryKeysValues()
-		if err != nil {
-			return p.error(err, "SoftDelete-001", "fail to get primary keys")
-		}
-		return p.error(err, "SoftDelete-002", primaryKeysValues)
+		return p.error(err, "SoftDelete-002", DAOMetadata.PrimaryKeysValues())
 	}
 
 	return p.Update(structPointer, "DeletedAt")
@@ -182,11 +175,7 @@ func (p *DBConnector) Restore(structPointer interface{}) error {
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
 		}
-		primaryKeysValues, err := DAOMetadata.PrimaryKeysValues()
-		if err != nil {
-			return p.error(err, "Restore-001", "fail to get primary keys")
-		}
-		return p.error(err, "Restore-002", primaryKeysValues)
+		return p.error(err, "Restore-002", DAOMetadata.PrimaryKeysValues())
 	}
 
 	return p.Update(structPointer, "DeletedAt")
@@ -229,11 +218,7 @@ func (p *DBConnector) GetByPrimaryKeys(structPointer interface{}) error {
 		return p.error(err, "GetByPrimaryKeys-001", "failed to parse DAO")
 	}
 
-	primaryKeys, err := metadata.PrimaryKeysValues()
-	if err != nil {
-		return p.error(err, "GetByPrimaryKeys-002", "failed to get primary keys")
-	}
-
+	primaryKeys := metadata.PrimaryKeysValues()
 	tx := p.GormDB.Where(primaryKeys).First(structPointer)
 
 	if tx.Error != nil {
