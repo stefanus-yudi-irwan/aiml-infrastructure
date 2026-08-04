@@ -14,4 +14,7 @@ type IDBConnector interface {
 	Exists(structPointer DataStruct) (IsDataExists, error)
 	Ping(timeLimitSecond int) error
 	Close() error
+
+	GetByQuery(query string) ([]interface{}, error)
+	ExecuteQuery(query string) error
 }

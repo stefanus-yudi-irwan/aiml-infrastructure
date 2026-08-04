@@ -1,19 +1,22 @@
 package cache
 
-import "aiml-infrastructure/internal/base/cache/redis"
+import "time"
 
-type CacheConfig struct {
-	Backend           Backend
-	Address           string
-	Username          string
-	Passsword         string
-	DB                int64
-	DefaultExpiration int64
+type Value struct {
+	Data  string
+	Score float64
 }
 
-func NewCacheConnector(config CacheConfig) (ICacheConnector, error) {
-	switch config.Backend {
-	case BackendRedis, BackendValkey, BackendDragonflyDB:
-		return redis.NewRedisClient()
-	}
+type KeyValue struct {
+	Key   string
+	Value Value
+}
+
+type Config struct {
+	Backend                 string
+	Address                 string
+	Username                string
+	Password                string
+	Db                      int64
+	DefaultSecondExpiration time.Duration
 }
