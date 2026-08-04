@@ -40,7 +40,7 @@ func (d *dragonflyClient) Set(ctx context.Context, keyValue cache.KeyValue) erro
 		ctx,
 		keyValue.Key,
 		keyValue.Value.Data,
-		d.config.DefaultSecondExpiration,
+		time.Duration(d.config.DefaultSecondExpiration)*time.Second,
 	).Err(); err != nil {
 		return d.error(err, "Set-001", keyValue.Key)
 	}
@@ -48,13 +48,13 @@ func (d *dragonflyClient) Set(ctx context.Context, keyValue cache.KeyValue) erro
 
 }
 
-func (d *dragonflyClient) SetWithTTL(ctx context.Context, ttlSecond time.Duration, keyValue cache.KeyValue) error {
+func (d *dragonflyClient) SetWithTTL(ctx context.Context, ttlSecond int64, keyValue cache.KeyValue) error {
 
 	if err := d.client.Set(
 		ctx,
 		keyValue.Key,
 		keyValue.Value.Data,
-		ttlSecond,
+		time.Duration(ttlSecond)*time.Second,
 	).Err(); err != nil {
 		return d.error(err, "SetWithTTL-001", keyValue.Key)
 	}
@@ -71,7 +71,7 @@ func (d *dragonflyClient) SetBatch(ctx context.Context, keyValues ...cache.KeyVa
 			ctx,
 			keyValue.Key,
 			keyValue.Value.Data,
-			d.config.DefaultSecondExpiration,
+			time.Duration(d.config.DefaultSecondExpiration)*time.Second,
 		).Err(); err != nil {
 			return d.error(err, "SetBatch-001", keyValue.Key)
 		}
@@ -86,7 +86,7 @@ func (d *dragonflyClient) SetBatch(ctx context.Context, keyValues ...cache.KeyVa
 
 }
 
-func (d *dragonflyClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Duration, keyValues ...cache.KeyValue) error {
+func (d *dragonflyClient) SetBatchWithTTL(ctx context.Context, ttlSecond int64, keyValues ...cache.KeyValue) error {
 
 	batchPipe := d.client.Pipeline()
 
@@ -95,7 +95,7 @@ func (d *dragonflyClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Du
 			ctx,
 			keyValue.Key,
 			keyValue.Value.Data,
-			ttlSecond,
+			time.Duration(ttlSecond)*time.Second,
 		).Err(); err != nil {
 			return d.error(err, "SetBatchWithTTL-001", keyValue.Key)
 		}
@@ -187,6 +187,13 @@ func (d *dragonflyClient) Exists(ctx context.Context, key string) (bool, error) 
 	}
 
 	return count > 0, nil
+}
+
+func (d *dragonflyClient) FlushAll(ctx context.Context) error {
+	if err := d.client.FlushAll(ctx).Err(); err != nil {
+		return d.error(err, "FlushAll-001", "failed to flush all keys")
+	}
+	return nil
 }
 
 func (d *dragonflyClient) Close() error {

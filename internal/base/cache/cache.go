@@ -1,7 +1,5 @@
 package cache
 
-import "time"
-
 type Value struct {
 	Data  string
 	Score float64
@@ -18,5 +16,5 @@ type Config struct {
 	Username                string
 	Password                string
 	Db                      int64
-	DefaultSecondExpiration time.Duration
+	DefaultSecondExpiration int64
 }

@@ -40,7 +40,7 @@ func (r *redisClient) Set(ctx context.Context, keyValue cache.KeyValue) error {
 		ctx,
 		keyValue.Key,
 		keyValue.Value.Data,
-		r.config.DefaultSecondExpiration,
+		time.Duration(r.config.DefaultSecondExpiration)*time.Second,
 	).Err(); err != nil {
 		return r.error(err, "Set-001", keyValue.Key)
 	}
@@ -48,13 +48,13 @@ func (r *redisClient) Set(ctx context.Context, keyValue cache.KeyValue) error {
 
 }
 
-func (r *redisClient) SetWithTTL(ctx context.Context, ttlSecond time.Duration, keyValue cache.KeyValue) error {
+func (r *redisClient) SetWithTTL(ctx context.Context, ttlSecond int64, keyValue cache.KeyValue) error {
 
 	if err := r.client.Set(
 		ctx,
 		keyValue.Key,
 		keyValue.Value.Data,
-		ttlSecond,
+		time.Duration(ttlSecond)*time.Second,
 	).Err(); err != nil {
 		return r.error(err, "SetWithTTL-001", keyValue.Key)
 	}
@@ -75,7 +75,7 @@ func (r *redisClient) SetBatch(ctx context.Context, keyValues ...cache.KeyValue)
 			ctx,
 			keyValue.Key,
 			keyValue.Value.Data,
-			r.config.DefaultSecondExpiration,
+			time.Duration(r.config.DefaultSecondExpiration)*time.Second,
 		).Err(); err != nil {
 			return r.error(err, "SetBatch-002", keyValue.Key)
 		}
@@ -90,7 +90,7 @@ func (r *redisClient) SetBatch(ctx context.Context, keyValues ...cache.KeyValue)
 
 }
 
-func (r *redisClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Duration, keyValues ...cache.KeyValue) error {
+func (r *redisClient) SetBatchWithTTL(ctx context.Context, ttlSecond int64, keyValues ...cache.KeyValue) error {
 
 	if len(keyValues) == 0 {
 		return r.error(errors.New("keyValues is empty"), "SetBatchWithTTL-001")
@@ -103,7 +103,7 @@ func (r *redisClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Durati
 			ctx,
 			keyValue.Key,
 			keyValue.Value.Data,
-			ttlSecond,
+			time.Duration(ttlSecond)*time.Second,
 		).Err(); err != nil {
 			return r.error(err, "SetBatchWithTTL-002", keyValue.Key)
 		}
@@ -195,6 +195,13 @@ func (r *redisClient) Exists(ctx context.Context, key string) (bool, error) {
 	}
 
 	return count > 0, nil
+}
+
+func (r *redisClient) FlushAll(ctx context.Context) error {
+	if err := r.client.FlushAll(ctx).Err(); err != nil {
+		return r.error(err, "FlushAll-001", "failed to flush all keys")
+	}
+	return nil
 }
 
 func (r *redisClient) Close() error {

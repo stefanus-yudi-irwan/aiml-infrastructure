@@ -39,7 +39,7 @@ func (v *valkeyClient) Set(ctx context.Context, keyValue cache.KeyValue) error {
 		ctx,
 		keyValue.Key,
 		keyValue.Value.Data,
-		v.config.DefaultSecondExpiration,
+		time.Duration(v.config.DefaultSecondExpiration)*time.Second,
 	).Err(); err != nil {
 		return v.error(err, "Set-001", keyValue.Key)
 	}
@@ -47,13 +47,13 @@ func (v *valkeyClient) Set(ctx context.Context, keyValue cache.KeyValue) error {
 
 }
 
-func (v *valkeyClient) SetWithTTL(ctx context.Context, ttlSecond time.Duration, keyValue cache.KeyValue) error {
+func (v *valkeyClient) SetWithTTL(ctx context.Context, ttlSecond int64, keyValue cache.KeyValue) error {
 
 	if err := v.client.Set(
 		ctx,
 		keyValue.Key,
 		keyValue.Value.Data,
-		ttlSecond,
+		time.Duration(ttlSecond)*time.Second,
 	).Err(); err != nil {
 		return v.error(err, "SetWithTTL-001", keyValue.Key)
 	}
@@ -70,7 +70,7 @@ func (v *valkeyClient) SetBatch(ctx context.Context, keyValues ...cache.KeyValue
 			ctx,
 			keyValue.Key,
 			keyValue.Value.Data,
-			v.config.DefaultSecondExpiration,
+			time.Duration(v.config.DefaultSecondExpiration)*time.Second,
 		).Err(); err != nil {
 			return v.error(err, "SetBatch-001", keyValue.Key)
 		}
@@ -85,7 +85,7 @@ func (v *valkeyClient) SetBatch(ctx context.Context, keyValues ...cache.KeyValue
 
 }
 
-func (v *valkeyClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Duration, keyValues ...cache.KeyValue) error {
+func (v *valkeyClient) SetBatchWithTTL(ctx context.Context, ttlSecond int64, keyValues ...cache.KeyValue) error {
 
 	batchPipe := v.client.Pipeline()
 
@@ -94,7 +94,7 @@ func (v *valkeyClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Durat
 			ctx,
 			keyValue.Key,
 			keyValue.Value.Data,
-			ttlSecond,
+			time.Duration(ttlSecond)*time.Second,
 		).Err(); err != nil {
 			return v.error(err, "SetBatchWithTTL-001", keyValue.Key)
 		}
@@ -186,6 +186,13 @@ func (v *valkeyClient) Exists(ctx context.Context, key string) (bool, error) {
 	}
 
 	return count > 0, nil
+}
+
+func (v *valkeyClient) FlushAll(ctx context.Context) error {
+	if err := v.client.FlushAll(ctx).Err(); err != nil {
+		return v.error(err, "FlushAll-001", "failed to flush all keys")
+	}
+	return nil
 }
 
 func (v *valkeyClient) Close() error {

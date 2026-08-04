@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 )
@@ -36,7 +35,7 @@ func (m *memcachedClient) Set(ctx context.Context, keyValue cache.KeyValue) erro
 	item := &memcache.Item{
 		Key:        keyValue.Key,
 		Value:      []byte(keyValue.Value.Data),
-		Expiration: int32(m.cfg.DefaultSecondExpiration.Seconds()),
+		Expiration: int32(m.cfg.DefaultSecondExpiration),
 	}
 
 	if err := m.client.Set(item); err != nil {
@@ -46,14 +45,14 @@ func (m *memcachedClient) Set(ctx context.Context, keyValue cache.KeyValue) erro
 	return nil
 }
 
-func (m *memcachedClient) SetWithTTL(ctx context.Context, ttlSecond time.Duration, keyValue cache.KeyValue) error {
+func (m *memcachedClient) SetWithTTL(ctx context.Context, ttlSecond int64, keyValue cache.KeyValue) error {
 
 	_ = ctx // context is not used in memcached client, but we keep it for interface compatibility
 
 	item := &memcache.Item{
 		Key:        keyValue.Key,
 		Value:      []byte(keyValue.Value.Data),
-		Expiration: int32(ttlSecond.Seconds()),
+		Expiration: int32(ttlSecond),
 	}
 
 	if err := m.client.Set(item); err != nil {
@@ -75,7 +74,7 @@ func (m *memcachedClient) SetBatch(ctx context.Context, keyValues ...cache.KeyVa
 		item := &memcache.Item{
 			Key:        keyValue.Key,
 			Value:      []byte(keyValue.Value.Data),
-			Expiration: int32(m.cfg.DefaultSecondExpiration.Seconds()),
+			Expiration: int32(m.cfg.DefaultSecondExpiration),
 		}
 
 		if err := m.client.Set(item); err != nil {
@@ -86,7 +85,7 @@ func (m *memcachedClient) SetBatch(ctx context.Context, keyValues ...cache.KeyVa
 	return nil
 }
 
-func (m *memcachedClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Duration, KeyValues ...cache.KeyValue) error {
+func (m *memcachedClient) SetBatchWithTTL(ctx context.Context, ttlSecond int64, KeyValues ...cache.KeyValue) error {
 
 	_ = ctx // context is not used in memcached client, but we keep it for interface compatibility
 
@@ -98,7 +97,7 @@ func (m *memcachedClient) SetBatchWithTTL(ctx context.Context, ttlSecond time.Du
 		item := &memcache.Item{
 			Key:        keyValue.Key,
 			Value:      []byte(keyValue.Value.Data),
-			Expiration: int32(ttlSecond.Seconds()),
+			Expiration: int32(ttlSecond),
 		}
 
 		if err := m.client.Set(item); err != nil {
@@ -210,6 +209,18 @@ func (m *memcachedClient) Exists(ctx context.Context, key string) (bool, error) 
 	}
 
 	return true, nil
+}
+
+func (m *memcachedClient) FlushAll(ctx context.Context) error {
+
+	_ = ctx // context is not used in memcached client, but we keep it for interface compatibility
+
+	err := m.client.FlushAll()
+	if err != nil {
+		return m.error(err, "FlushAll-001")
+	}
+
+	return nil
 }
 
 func (m *memcachedClient) Close() error {
