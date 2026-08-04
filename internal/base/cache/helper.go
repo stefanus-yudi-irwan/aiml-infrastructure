@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func createCacheKey(keys ...string) (string, error) {
+func CreateCacheKey(keys ...string) (string, error) {
 	if len(keys) == 0 {
 		return "", fmt.Errorf("%s: %s", "createCacheKey", "keys argument found empty")
 	}
@@ -22,36 +22,36 @@ func createCacheKey(keys ...string) (string, error) {
 	return cacheKeys.String(), nil
 }
 
-func createCacheValue(data string) (*Value, error) {
+func CreateCacheValue(data string) (Value, error) {
 	if data == "" {
-		return nil, fmt.Errorf("%s: %s", "createCacheValue", "empty data argument")
+		return Value{}, fmt.Errorf("%s: %s", "createCacheValue", "empty data argument")
 	}
-	return &Value{
+	return Value{
 		Data:  data,
 		Score: 0,
 	}, nil
 }
 
-func createCacheValueWithScore(data string, score float64) (*Value, error) {
+func CreateCacheValueWithScore(data string, score float64) (Value, error) {
 	if data == "" {
-		return nil, fmt.Errorf("%s: %s", "createCacheValue", "empty data argument")
+		return Value{}, fmt.Errorf("%s: %s", "createCacheValue", "empty data argument")
 	}
-	return &Value{
+	return Value{
 		Data:  data,
 		Score: score,
 	}, nil
 }
 
-func createCacheKeyValue(key string, value Value) (*KeyValue, error) {
+func CreateCacheKeyValue(key string, value Value) (KeyValue, error) {
 	if key == "" {
-		return nil, fmt.Errorf("%s: %s", "createCacheKeyValue", "empty key argument")
+		return KeyValue{}, fmt.Errorf("%s: %s", "createCacheKeyValue", "empty key argument")
 	}
 
 	if reflect.DeepEqual(value, Value{}) {
-		return nil, fmt.Errorf("%s: %s", "createCacheKeyValue", "emty value struct argument")
+		return KeyValue{}, fmt.Errorf("%s: %s", "createCacheKeyValue", "empty value struct argument")
 	}
 
-	return &KeyValue{
+	return KeyValue{
 		Key:   key,
 		Value: value,
 	}, nil
