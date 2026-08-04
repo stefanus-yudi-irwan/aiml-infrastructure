@@ -1,20 +1,15 @@
 package database
 
-type DataStruct interface{}
-type IsDataExists bool
-
 type IDBConnector interface {
-	Insert(structPointer DataStruct) error
-	Update(structPointer DataStruct, structFields ...string) error
-	Upsert(structPointer DataStruct) error
-	HardDelete(structPointer DataStruct) error
-	SoftDelete(structPointer DataStruct) error
-	Restore(structPointer DataStruct) error
-	GetByPrimaryKeys(structPointer DataStruct) error
-	Exists(structPointer DataStruct) (IsDataExists, error)
+	Insert(structPointer interface{}) error
+	Update(structPointer interface{}, structFields ...string) error
+	Upsert(structPointer interface{}) error
+	HardDelete(structPointer interface{}) error
+	SoftDelete(structPointer interface{}) error
+	Restore(structPointer interface{}) error
+	GetByPrimaryKeys(structPointer interface{}) error
+	Exists(structPointer interface{}) (bool, error)
 	Ping(timeLimitSecond int) error
+	ExecuteSQL(sql string) error
 	Close() error
-
-	GetByQuery(query string) ([]interface{}, error)
-	ExecuteQuery(query string) error
 }

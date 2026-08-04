@@ -1,6 +1,7 @@
-package database
+package backend
 
 import (
+	"aiml-infrastructure/internal/base/database"
 	"context"
 	"database/sql"
 	"errors"
@@ -98,7 +99,7 @@ func (p *DBConnector) Upsert(structPointer interface{}) error {
 	}
 
 	timeNow := time.Now().Unix()
-	if err := touchTimestamp(structPointer, "UpdatedAt", &timeNow); err != nil {
+	if err := database.TouchTimestamp(structPointer, "UpdatedAt", &timeNow); err != nil {
 		return p.error(err, "Upsert-002", "failed to update UpdatedAt")
 	}
 
@@ -125,7 +126,7 @@ func (p *DBConnector) Upsert(structPointer interface{}) error {
 
 	default:
 		if err = p.GormDB.Clauses(clause.OnConflict{
-			Columns:   formatConflictColumns(primaryKeys),
+			Columns:   database.FormatConflictColumns(primaryKeys),
 			DoUpdates: clause.AssignmentColumns(updateableColumns),
 		}).Create(structPointer).Error; err != nil {
 			return p.error(err, "Upsert-006", primaryKeys)
@@ -157,7 +158,7 @@ func (p *DBConnector) HardDelete(structPointer interface{}) error {
 func (p *DBConnector) SoftDelete(structPointer interface{}) error {
 
 	timeNow := time.Now().Unix()
-	if err := touchTimestamp(structPointer, "DeletedAt", &timeNow); err != nil {
+	if err := database.TouchTimestamp(structPointer, "DeletedAt", &timeNow); err != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
@@ -170,7 +171,7 @@ func (p *DBConnector) SoftDelete(structPointer interface{}) error {
 
 func (p *DBConnector) Restore(structPointer interface{}) error {
 
-	if err := touchTimestamp(structPointer, "DeletedAt", nil); err != nil {
+	if err := database.TouchTimestamp(structPointer, "DeletedAt", nil); err != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
@@ -225,5 +226,12 @@ func (p *DBConnector) GetByPrimaryKeys(structPointer interface{}) error {
 		return p.error(tx.Error, "GetByPrimaryKeys-003", primaryKeys)
 	}
 
+	return nil
+}
+
+func (p *DBConnector) ExecuteSQL(sql string) error {
+	if err := p.GormDB.Exec(sql).Error; err != nil {
+		return p.error(err, "ExecuteSQL-001", "failed to execute SQL")
+	}
 	return nil
 }

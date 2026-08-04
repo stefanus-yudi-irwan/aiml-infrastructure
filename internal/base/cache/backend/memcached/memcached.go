@@ -14,7 +14,7 @@ type memcachedClient struct {
 	cfg    cache.Config
 }
 
-func NewMemcachedClient(cfg cache.Config) (cache.ICacheConnector, error) {
+func NewMemcachedClient(cfg cache.Config) (*memcachedClient, error) {
 
 	client := memcache.New(cfg.Address)
 

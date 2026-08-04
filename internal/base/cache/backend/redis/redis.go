@@ -15,7 +15,7 @@ type redisClient struct {
 	config cache.Config
 }
 
-func NewRedisClient(config cache.Config) (cache.ICacheConnector, error) {
+func NewRedisClient(config cache.Config) (*redisClient, error) {
 
 	client := redis.NewClient(&redis.Options{
 		Addr:     config.Address,

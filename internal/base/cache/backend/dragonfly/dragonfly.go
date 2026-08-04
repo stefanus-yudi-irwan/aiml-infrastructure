@@ -15,7 +15,7 @@ type dragonflyClient struct {
 	config cache.Config
 }
 
-func NewDragonFlyClient(config cache.Config) (cache.ICacheConnector, error) {
+func NewDragonFlyClient(config cache.Config) (*dragonflyClient, error) {
 
 	client := redis.NewClient(&redis.Options{
 		Addr:     config.Address,

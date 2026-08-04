@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	BackendRedis     string = "redis"
-	BackendValkey    string = "valkey"
-	BackendDragonfly string = "dragonfly"
-	BackendMemcached string = "memcached"
+	BackendRedis     cache.BackendCache = "redis"
+	BackendValkey    cache.BackendCache = "valkey"
+	BackendDragonfly cache.BackendCache = "dragonfly"
+	BackendMemcached cache.BackendCache = "memcached"
 )
 
 func NewCacheConnector(config cache.Config) (cache.ICacheConnector, error) {

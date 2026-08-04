@@ -1,5 +1,6 @@
 package cache
 
+type BackendCache string
 type Value struct {
 	Data  string
 	Score float64
@@ -11,7 +12,7 @@ type KeyValue struct {
 }
 
 type Config struct {
-	Backend                 string
+	Backend                 BackendCache
 	Address                 string
 	Username                string
 	Password                string

@@ -15,7 +15,7 @@ type valkeyClient struct {
 	config cache.Config
 }
 
-func NewValkeyClient(config cache.Config) (cache.ICacheConnector, error) {
+func NewValkeyClient(config cache.Config) (*valkeyClient, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     config.Address,
 		Username: config.Username,

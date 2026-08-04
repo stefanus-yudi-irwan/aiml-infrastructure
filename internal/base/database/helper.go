@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func formatConflictColumns(primaryKeys []string) []clause.Column {
+func FormatConflictColumns(primaryKeys []string) []clause.Column {
 	columns := make([]clause.Column, 0, len(primaryKeys))
 
 	for _, key := range primaryKeys {
@@ -19,7 +19,7 @@ func formatConflictColumns(primaryKeys []string) []clause.Column {
 	return columns
 }
 
-func touchTimestamp(structPointer interface{}, fieldName string, unixTime *int64) error {
+func TouchTimestamp(structPointer interface{}, fieldName string, unixTime *int64) error {
 	if structPointer == nil {
 		return fmt.Errorf("structPointer is nil")
 	}

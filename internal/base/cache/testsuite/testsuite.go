@@ -16,7 +16,7 @@ type CacheTestSuite struct {
 	CacheConnector cache.ICacheConnector
 }
 
-func (c *CacheTestSuite) SetupCache(envFile string, backend string) {
+func (c *CacheTestSuite) SetupCache(envFile string, backend cache.BackendCache) {
 	err := godotenv.Load(envFile)
 	assert.NoError(c.T(), err)
 
