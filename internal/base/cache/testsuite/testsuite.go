@@ -45,35 +45,79 @@ func (c *CacheTestSuite) TearDownCache() {
 }
 
 func (c *CacheTestSuite) Test001Set() {
-
-	key, err := cache.CreateCacheKey("test", "key", "001")
-	assert.NoError(c.T(), err)
-	value, err := cache.CreateCacheValue("test-value-001")
-	assert.NoError(c.T(), err)
-	keyValue, err := cache.CreateCacheKeyValue(key, value)
-	assert.NoError(c.T(), err)
-
-	err = c.CacheConnector.Set(c.T().Context(), keyValue)
+	keyValue := createKeyValueTest("test-set", 1)
+	err := c.CacheConnector.Set(c.T().Context(), keyValue)
 	assert.NoError(c.T(), err)
 }
 
 func (c *CacheTestSuite) Test002SetWithTTL() {
-
-	key, err := cache.CreateCacheKey("test", "key", "002")
-	assert.NoError(c.T(), err)
-	value, err := cache.CreateCacheValue("test-value-002")
-	assert.NoError(c.T(), err)
-	keyValue, err := cache.CreateCacheKeyValue(key, value)
-	assert.NoError(c.T(), err)
-
-	err = c.CacheConnector.SetWithTTL(c.T().Context(), 100, keyValue)
+	keyValue := createKeyValueTest("test-set-with-ttl", 1)
+	err := c.CacheConnector.SetWithTTL(c.T().Context(), 100, keyValue)
 	assert.NoError(c.T(), err)
 }
 
-func (c *CacheTestSuite) Test003SetBatch()        {}
-func (c *CacheTestSuite) Test004SetBatchWithTTL() {}
-func (c *CacheTestSuite) Test005Get()             {}
-func (c *CacheTestSuite) Test006GetBatch()        {}
-func (c *CacheTestSuite) Test007Delete()          {}
-func (c *CacheTestSuite) Test008DeleteBatch()     {}
-func (c *CacheTestSuite) Test009Exists()          {}
+func (c *CacheTestSuite) Test003SetBatch() {
+	keyValues := createBatchKeyValueTest("test-set-batch", 10)
+	err := c.CacheConnector.SetBatch(c.T().Context(), keyValues...)
+	assert.NoError(c.T(), err)
+}
+
+func (c *CacheTestSuite) Test004SetBatchWithTTL() {
+	keyValues := createBatchKeyValueTest("test-set-batch-with-ttl", 10)
+	err := c.CacheConnector.SetBatchWithTTL(c.T().Context(), 100, keyValues...)
+	assert.NoError(c.T(), err)
+}
+
+func (c *CacheTestSuite) Test005Get() {
+	keyValue := createKeyValueTest("test-get", 1)
+	err := c.CacheConnector.Set(c.T().Context(), keyValue)
+	assert.NoError(c.T(), err)
+
+	keyValueGet, err := c.CacheConnector.Get(c.T().Context(), keyValue.Key)
+	assert.NoError(c.T(), err)
+
+	assert.Equal(c.T(), keyValue, keyValueGet)
+}
+
+func (c *CacheTestSuite) Test006GetBatch() {
+	keyValues := createBatchKeyValueTest("test-get-batch", 10)
+	err := c.CacheConnector.SetBatch(c.T().Context(), keyValues...)
+	assert.NoError(c.T(), err)
+
+	keys := extractKeys(keyValues...)
+	keyValuesGet, err := c.CacheConnector.GetBatch(c.T().Context(), keys...)
+	assert.NoError(c.T(), err)
+
+	assert.Equal(c.T(), keyValues, keyValuesGet)
+}
+
+func (c *CacheTestSuite) Test007Delete() {
+	keyValue := createKeyValueTest("test-delete", 1)
+	err := c.CacheConnector.Set(c.T().Context(), keyValue)
+	assert.NoError(c.T(), err)
+
+	deleteFlag, err := c.CacheConnector.Delete(c.T().Context(), keyValue.Key)
+	assert.NoError(c.T(), err)
+	assert.Equal(c.T(), deleteFlag, true)
+}
+
+func (c *CacheTestSuite) Test008DeleteBatch() {
+	keyValues := createBatchKeyValueTest("test-delete-batch", 10)
+	err := c.CacheConnector.SetBatch(c.T().Context(), keyValues...)
+	assert.NoError(c.T(), err)
+
+	keys := extractKeys(keyValues...)
+	countDeleted, err := c.CacheConnector.DeleteBatch(c.T().Context(), keys...)
+	assert.NoError(c.T(), err)
+	assert.Equal(c.T(), countDeleted, int64(10))
+}
+
+func (c *CacheTestSuite) Test009Exists() {
+	keyValue := createKeyValueTest("test-exists", 1)
+	err := c.CacheConnector.Set(c.T().Context(), keyValue)
+	assert.NoError(c.T(), err)
+
+	existsFlag, err := c.CacheConnector.Exists(c.T().Context(), keyValue.Key)
+	assert.NoError(c.T(), err)
+	assert.Equal(c.T(), existsFlag, true)
+}

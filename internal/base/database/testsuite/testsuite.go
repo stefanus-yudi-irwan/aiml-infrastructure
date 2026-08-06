@@ -46,13 +46,13 @@ func (d *DBTestSuite) SetupDB(config database.Config, initUpSQLPath string) {
 	d.DBConnector, err = factory.NewDBConnector(config)
 	assert.NoError(d.T(), err)
 
-	err = d.DBConnector.Ping(1)
+	err = d.DBConnector.Ping(d.T().Context(), 1)
 	assert.NoError(d.T(), err)
 
 	initSchema, err := os.ReadFile(initUpSQLPath)
 	assert.NoError(d.T(), err)
 
-	err = d.DBConnector.ExecuteSQL(string(initSchema))
+	err = d.DBConnector.ExecuteSQL(d.T().Context(), string(initSchema))
 	assert.NoError(d.T(), err)
 
 }
@@ -62,13 +62,13 @@ func (p *DBTestSuite) TearDownDB(initDownSQLPath string) {
 	endSchema, err := os.ReadFile(initDownSQLPath)
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.ExecuteSQL(string(endSchema))
+	err = p.DBConnector.ExecuteSQL(p.T().Context(), string(endSchema))
 	assert.NoError(p.T(), err)
 
 	err = p.DBConnector.Close()
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.Ping(1)
+	err = p.DBConnector.Ping(p.T().Context(), 1)
 	assert.Error(p.T(), err)
 }
 
@@ -80,7 +80,7 @@ func (p *DBTestSuite) Test001Insert() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -94,13 +94,13 @@ func (p *DBTestSuite) Test002InsertWithConflict() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
 	customer.LastName = "Smith"
 
-	err = p.DBConnector.Insert(&customer)
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -114,14 +114,14 @@ func (p *DBTestSuite) Test003UpdateExistingRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
 	customer.LastName = "Smith"
 
 	time.Sleep(2 * time.Second)
-	err = p.DBConnector.Update(&customer, "FirstName", "LastName")
+	err = p.DBConnector.Update(p.T().Context(), &customer, "FirstName", "LastName")
 	assert.NoError(p.T(), err)
 }
 
@@ -133,7 +133,7 @@ func (p *DBTestSuite) Test004UpdateWithoutRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Update(&customer)
+	err := p.DBConnector.Update(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -145,7 +145,7 @@ func (p *DBTestSuite) Test005UpsertNewRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Upsert(&customer)
+	err := p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -159,7 +159,7 @@ func (p *DBTestSuite) Test006UpsertExistingRecord() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.Upsert(&customer)
+	err := p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
@@ -167,7 +167,7 @@ func (p *DBTestSuite) Test006UpsertExistingRecord() {
 	customer.FirstName = "Julia"
 	customer.LastName = "Wiwin"
 
-	err = p.DBConnector.Upsert(&customer)
+	err = p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -181,10 +181,10 @@ func (p *DBTestSuite) Test007HardDelete() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.HardDelete(&customer)
+	err = p.DBConnector.HardDelete(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -196,7 +196,7 @@ func (p *DBTestSuite) Test008HardDeleteWithoutRecord() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.HardDelete(&customer)
+	err := p.DBConnector.HardDelete(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -208,12 +208,12 @@ func (p *DBTestSuite) Test009SoftDelete() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
 
-	err = p.DBConnector.SoftDelete(&customer)
+	err = p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -225,7 +225,7 @@ func (p *DBTestSuite) Test010SoftDeleteWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.SoftDelete(&customer)
+	err := p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -236,17 +236,17 @@ func (p *DBTestSuite) Test011RestoreExistingRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
 
-	err = p.DBConnector.SoftDelete(&customer)
+	err = p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
 
-	err = p.DBConnector.Restore(&customer)
+	err = p.DBConnector.Restore(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -258,7 +258,7 @@ func (p *DBTestSuite) Test012RestoreWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Restore(&customer)
+	err := p.DBConnector.Restore(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 
 }
@@ -271,10 +271,10 @@ func (p *DBTestSuite) Test013Exists() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
-	isExists, err := p.DBConnector.Exists(&customer)
+	isExists, err := p.DBConnector.Exists(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), isExists, true)
 }
@@ -287,7 +287,7 @@ func (p *DBTestSuite) Test014ExistsWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	isExists, err := p.DBConnector.Exists(&customer)
+	isExists, err := p.DBConnector.Exists(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), isExists, false)
 
@@ -303,14 +303,14 @@ func (p *DBTestSuite) Test015GetByPrimaryKeys() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	emptyCustomer := CustomerDAO{
 		ID: ID,
 	}
 
-	err = p.DBConnector.GetByPrimaryKeys(&emptyCustomer)
+	err = p.DBConnector.GetByPrimaryKeys(p.T().Context(), &emptyCustomer)
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), emptyCustomer.FirstName, "Stefanus")
 	assert.Equal(p.T(), emptyCustomer.LastName, "Yudi")
