@@ -1,6 +1,7 @@
-package database
+package backend
 
 import (
+	"aiml-infrastructure/internal/base/database"
 	"context"
 	"database/sql"
 	"errors"
@@ -52,20 +53,18 @@ func (p *DBConnector) error(err error, method string, params ...interface{}) err
 	return fmt.Errorf("DBConnector.(%v)(%v) %w", method, params, err)
 }
 
-func (p *DBConnector) Insert(structPointer interface{}) error {
-
-	if err := p.GormDB.Create(structPointer).Error; err != nil {
-		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
+func (p *DBConnector) Insert(ctx context.Context, structPointer interface{}) error {
+	if err := p.GormDB.WithContext(ctx).Create(structPointer).Error; err != nil {
+		DAOMetadata, parseErr := parseDAO(p.GormDB, structPointer)
 		if err != nil {
-			return p.error(err, "Insert-001", "failed to parse DAO")
+			return p.error(parseErr, "Insert-001", "failed to parse DAO")
 		}
 		return p.error(err, "Insert-002", DAOMetadata.PrimaryKeysValues())
 	}
 	return nil
 }
 
-func (p *DBConnector) Update(structPointer interface{}, structFields ...string) error {
-
+func (p *DBConnector) Update(ctx context.Context, structPointer interface{}, structFields ...string) error {
 	DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
 		return p.error(err, "Update-001", "failed to parse DAO")
@@ -75,22 +74,21 @@ func (p *DBConnector) Update(structPointer interface{}, structFields ...string) 
 	if err != nil {
 		return p.error(err, "Update-002", "failed to get column names")
 	}
-	tx := p.GormDB.
-		Select(columns).
-		Updates(structPointer)
+
+	tx := p.GormDB.WithContext(ctx).Select(columns).Updates(structPointer)
 
 	if tx.Error != nil {
 		return p.error(tx.Error, "Update-003", DAOMetadata.PrimaryKeysValues())
 	}
 
 	if tx.RowsAffected == 0 {
-		return p.error(gorm.ErrRecordNotFound, "Update-005", DAOMetadata.PrimaryKeysValues())
+		return p.error(gorm.ErrRecordNotFound, "Update-004", DAOMetadata.PrimaryKeysValues())
 	}
 
 	return nil
 }
 
-func (p *DBConnector) Upsert(structPointer interface{}) error {
+func (p *DBConnector) Upsert(ctx context.Context, structPointer interface{}) error {
 
 	DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
@@ -98,7 +96,7 @@ func (p *DBConnector) Upsert(structPointer interface{}) error {
 	}
 
 	timeNow := time.Now().Unix()
-	if err := touchTimestamp(structPointer, "UpdatedAt", &timeNow); err != nil {
+	if err := database.TouchTimestamp(structPointer, "UpdatedAt", &timeNow); err != nil {
 		return p.error(err, "Upsert-002", "failed to update UpdatedAt")
 	}
 
@@ -119,13 +117,13 @@ func (p *DBConnector) Upsert(structPointer interface{}) error {
 		mergeQuery := mergeQueryBuilder.Build()
 		columnValues := DAOMetadata.ColumnValues()
 
-		if err = p.GormDB.Exec(mergeQuery, columnValues...).Error; err != nil {
+		if err = p.GormDB.WithContext(ctx).Exec(mergeQuery, columnValues...).Error; err != nil {
 			return p.error(err, "Upsert-005", primaryKeys)
 		}
 
 	default:
-		if err = p.GormDB.Clauses(clause.OnConflict{
-			Columns:   formatConflictColumns(primaryKeys),
+		if err = p.GormDB.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns:   database.FormatConflictColumns(primaryKeys),
 			DoUpdates: clause.AssignmentColumns(updateableColumns),
 		}).Create(structPointer).Error; err != nil {
 			return p.error(err, "Upsert-006", primaryKeys)
@@ -135,9 +133,9 @@ func (p *DBConnector) Upsert(structPointer interface{}) error {
 	return nil
 }
 
-func (p *DBConnector) HardDelete(structPointer interface{}) error {
+func (p *DBConnector) HardDelete(ctx context.Context, structPointer interface{}) error {
 
-	tx := p.GormDB.Delete(structPointer)
+	tx := p.GormDB.WithContext(ctx).Delete(structPointer)
 
 	if tx.Error != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
@@ -154,10 +152,10 @@ func (p *DBConnector) HardDelete(structPointer interface{}) error {
 	return nil
 }
 
-func (p *DBConnector) SoftDelete(structPointer interface{}) error {
+func (p *DBConnector) SoftDelete(ctx context.Context, structPointer interface{}) error {
 
 	timeNow := time.Now().Unix()
-	if err := touchTimestamp(structPointer, "DeletedAt", &timeNow); err != nil {
+	if err := database.TouchTimestamp(structPointer, "DeletedAt", &timeNow); err != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
@@ -165,12 +163,12 @@ func (p *DBConnector) SoftDelete(structPointer interface{}) error {
 		return p.error(err, "SoftDelete-002", DAOMetadata.PrimaryKeysValues())
 	}
 
-	return p.Update(structPointer, "DeletedAt")
+	return p.Update(ctx, structPointer, "DeletedAt")
 }
 
-func (p *DBConnector) Restore(structPointer interface{}) error {
+func (p *DBConnector) Restore(ctx context.Context, structPointer interface{}) error {
 
-	if err := touchTimestamp(structPointer, "DeletedAt", nil); err != nil {
+	if err := database.TouchTimestamp(structPointer, "DeletedAt", nil); err != nil {
 		DAOMetadata, err := parseDAO(p.GormDB, structPointer)
 		if err != nil {
 			return p.error(err, "HardDelete-001", "failed to parse DAO")
@@ -178,12 +176,12 @@ func (p *DBConnector) Restore(structPointer interface{}) error {
 		return p.error(err, "Restore-002", DAOMetadata.PrimaryKeysValues())
 	}
 
-	return p.Update(structPointer, "DeletedAt")
+	return p.Update(ctx, structPointer, "DeletedAt")
 
 }
 
-func (p *DBConnector) Exists(structPointer interface{}) (bool, error) {
-	tx := p.GormDB.Take(structPointer)
+func (p *DBConnector) Exists(ctx context.Context, structPointer interface{}) (bool, error) {
+	tx := p.GormDB.WithContext(ctx).Take(structPointer)
 
 	if tx.Error == nil {
 		return true, nil
@@ -196,8 +194,8 @@ func (p *DBConnector) Exists(structPointer interface{}) (bool, error) {
 	return false, p.error(tx.Error, "Exists-001")
 }
 
-func (p *DBConnector) Ping(timeLimitSecond int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeLimitSecond)*time.Second)
+func (p *DBConnector) Ping(ctx context.Context, timeLimitSecond int) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeLimitSecond)*time.Second)
 	defer cancel()
 	if err := p.ClientDB.PingContext(ctx); err != nil {
 		return p.error(err, "Ping-001", fmt.Sprintf("failed to connect to database within %d second", timeLimitSecond))
@@ -212,18 +210,25 @@ func (p *DBConnector) Close() error {
 	return nil
 }
 
-func (p *DBConnector) GetByPrimaryKeys(structPointer interface{}) error {
+func (p *DBConnector) GetByPrimaryKeys(ctx context.Context, structPointer interface{}) error {
 	metadata, err := parseDAO(p.GormDB, structPointer)
 	if err != nil {
 		return p.error(err, "GetByPrimaryKeys-001", "failed to parse DAO")
 	}
 
 	primaryKeys := metadata.PrimaryKeysValues()
-	tx := p.GormDB.Where(primaryKeys).First(structPointer)
+	tx := p.GormDB.WithContext(ctx).Where(primaryKeys).First(structPointer)
 
 	if tx.Error != nil {
 		return p.error(tx.Error, "GetByPrimaryKeys-003", primaryKeys)
 	}
 
+	return nil
+}
+
+func (p *DBConnector) ExecuteSQL(ctx context.Context, sql string) error {
+	if err := p.GormDB.WithContext(ctx).Exec(sql).Error; err != nil {
+		return p.error(err, "ExecuteSQL-001", "failed to execute SQL")
+	}
 	return nil
 }

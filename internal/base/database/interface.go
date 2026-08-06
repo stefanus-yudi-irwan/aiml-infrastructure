@@ -1,17 +1,17 @@
 package database
 
-type DataStruct interface{}
-type IsDataExists bool
+import "context"
 
 type IDBConnector interface {
-	Insert(structPointer DataStruct) error
-	Update(structPointer DataStruct, structFields ...string) error
-	Upsert(structPointer DataStruct) error
-	HardDelete(structPointer DataStruct) error
-	SoftDelete(structPointer DataStruct) error
-	Restore(structPointer DataStruct) error
-	GetByPrimaryKeys(structPointer DataStruct) error
-	Exists(structPointer DataStruct) (IsDataExists, error)
-	Ping(timeLimitSecond int) error
+	Insert(ctx context.Context, structPointer interface{}) error
+	Update(ctx context.Context, structPointer interface{}, structFields ...string) error
+	Upsert(ctx context.Context, structPointer interface{}) error
+	HardDelete(ctx context.Context, structPointer interface{}) error
+	SoftDelete(ctx context.Context, structPointer interface{}) error
+	Restore(ctx context.Context, structPointer interface{}) error
+	GetByPrimaryKeys(ctx context.Context, structPointer interface{}) error
+	Exists(ctx context.Context, structPointer interface{}) (bool, error)
+	ExecuteSQL(ctx context.Context, sql string) error
+	Ping(ctx context.Context, timeLimitSecond int) error
 	Close() error
 }

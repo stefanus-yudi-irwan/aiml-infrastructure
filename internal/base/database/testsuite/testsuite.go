@@ -1,18 +1,14 @@
-package mysql
+package testsuite
 
 import (
 	"aiml-infrastructure/internal/base/database"
-	"fmt"
+	"aiml-infrastructure/internal/base/database/factory"
 	"os"
-	"strconv"
-	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/driver/mysql"
 )
 
 type TimestampDAO struct {
@@ -22,74 +18,61 @@ type TimestampDAO struct {
 }
 
 type CustomerDAO struct {
-	ID        string `gorm:"type:char(36);primaryKey"`
+	ID        string `gorm:"primaryKey"`
 	FirstName string `gorm:"column:first_name"`
 	LastName  string `gorm:"column:last_name"`
 	TimestampDAO
 }
 
+var customerTableName = "test.customer"
+
+func SetCustomerTableName(tableName string) {
+	customerTableName = tableName
+}
+
 func (CustomerDAO) TableName() string {
-	return "customer"
+	return customerTableName
 }
 
-type DBSuite struct {
+type DBTestSuite struct {
 	suite.Suite
-	DBConnector *database.DBConnector
+	DBConnector database.IDBConnector
 }
 
-func (p *DBSuite) SetupSuite() {
-	err := godotenv.Load("init/.env")
-	assert.NoError(p.T(), err)
+func (d *DBTestSuite) SetupDB(config database.Config, initUpSQLPath string) {
 
-	mysqlUser := os.Getenv("MYSQL_USER")
-	mysqlPassword := os.Getenv("MYSQL_PASSWORD")
-	mysqlHost := os.Getenv("MYSQL_HOST")
-	mysqlPort := os.Getenv("MYSQL_PORT")
-	mysqlDB := os.Getenv("MYSQL_DB")
-	MaxConnections, err := strconv.Atoi(os.Getenv("DB_MAX_CONNECTIONS"))
-	assert.NoError(p.T(), err)
-	connectionPath := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		mysqlUser,
-		mysqlPassword,
-		mysqlHost,
-		mysqlPort,
-		mysqlDB,
-	)
+	var err error
 
-	p.DBConnector, err = database.NewDBConnector(mysql.Open(connectionPath), MaxConnections)
-	assert.NoError(p.T(), err)
+	d.DBConnector, err = factory.NewDBConnector(config)
+	assert.NoError(d.T(), err)
 
-	err = p.DBConnector.Ping(1)
-	assert.NoError(p.T(), err)
+	err = d.DBConnector.Ping(d.T().Context(), 1)
+	assert.NoError(d.T(), err)
 
-	initSchema, err := os.ReadFile("init/init.up.sql")
-	assert.NoError(p.T(), err)
+	initSchema, err := os.ReadFile(initUpSQLPath)
+	assert.NoError(d.T(), err)
 
-	err = p.DBConnector.GormDB.Exec(string(initSchema)).Error
-	assert.NoError(p.T(), err)
+	err = d.DBConnector.ExecuteSQL(d.T().Context(), string(initSchema))
+	assert.NoError(d.T(), err)
+
 }
 
-func (p *DBSuite) TearDownSuite() {
+func (p *DBTestSuite) TearDownDB(initDownSQLPath string) {
 
-	endSchema, err := os.ReadFile("init/init.down.sql")
+	endSchema, err := os.ReadFile(initDownSQLPath)
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.GormDB.Exec(string(endSchema)).Error
+	err = p.DBConnector.ExecuteSQL(p.T().Context(), string(endSchema))
 	assert.NoError(p.T(), err)
 
 	err = p.DBConnector.Close()
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.Ping(1)
+	err = p.DBConnector.Ping(p.T().Context(), 1)
 	assert.Error(p.T(), err)
 }
 
-func TestMySQLSuite(t *testing.T) {
-	suite.Run(t, new(DBSuite))
-}
-
-func (p *DBSuite) Test001Insert() {
+func (p *DBTestSuite) Test001Insert() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -97,11 +80,11 @@ func (p *DBSuite) Test001Insert() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test002InsertWithConflict() {
+func (p *DBTestSuite) Test002InsertWithConflict() {
 
 	ID := uuid.New().String()
 
@@ -111,17 +94,17 @@ func (p *DBSuite) Test002InsertWithConflict() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
 	customer.LastName = "Smith"
 
-	err = p.DBConnector.Insert(&customer)
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
-func (p *DBSuite) Test003UpdateExistingRecord() {
+func (p *DBTestSuite) Test003UpdateExistingRecord() {
 
 	ID := uuid.New().String()
 
@@ -131,18 +114,18 @@ func (p *DBSuite) Test003UpdateExistingRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
 	customer.LastName = "Smith"
 
 	time.Sleep(2 * time.Second)
-	err = p.DBConnector.Update(&customer, "FirstName", "LastName")
+	err = p.DBConnector.Update(p.T().Context(), &customer, "FirstName", "LastName")
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test004UpdateWithoutRecord() {
+func (p *DBTestSuite) Test004UpdateWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -150,11 +133,11 @@ func (p *DBSuite) Test004UpdateWithoutRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Update(&customer)
+	err := p.DBConnector.Update(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
-func (p *DBSuite) Test005UpsertNewRecord() {
+func (p *DBTestSuite) Test005UpsertNewRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -162,11 +145,11 @@ func (p *DBSuite) Test005UpsertNewRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Upsert(&customer)
+	err := p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test006UpsertExistingRecord() {
+func (p *DBTestSuite) Test006UpsertExistingRecord() {
 
 	ID := uuid.New().String()
 
@@ -176,7 +159,7 @@ func (p *DBSuite) Test006UpsertExistingRecord() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.Upsert(&customer)
+	err := p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
@@ -184,11 +167,11 @@ func (p *DBSuite) Test006UpsertExistingRecord() {
 	customer.FirstName = "Julia"
 	customer.LastName = "Wiwin"
 
-	err = p.DBConnector.Upsert(&customer)
+	err = p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test007HardDelete() {
+func (p *DBTestSuite) Test007HardDelete() {
 
 	ID := uuid.New().String()
 
@@ -198,14 +181,14 @@ func (p *DBSuite) Test007HardDelete() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
-	err = p.DBConnector.HardDelete(&customer)
+	err = p.DBConnector.HardDelete(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test008HardDeleteWithoutRecord() {
+func (p *DBTestSuite) Test008HardDeleteWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.NewString(),
@@ -213,11 +196,11 @@ func (p *DBSuite) Test008HardDeleteWithoutRecord() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.HardDelete(&customer)
+	err := p.DBConnector.HardDelete(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
-func (p *DBSuite) Test009SoftDelete() {
+func (p *DBTestSuite) Test009SoftDelete() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -225,16 +208,16 @@ func (p *DBSuite) Test009SoftDelete() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
 
-	err = p.DBConnector.SoftDelete(&customer)
+	err = p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test010SoftDeleteWithoutRecord() {
+func (p *DBTestSuite) Test010SoftDeleteWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.NewString(),
@@ -242,32 +225,32 @@ func (p *DBSuite) Test010SoftDeleteWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.SoftDelete(&customer)
+	err := p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
-func (p *DBSuite) Test011RestoreExistingRecord() {
+func (p *DBTestSuite) Test011RestoreExistingRecord() {
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
 		FirstName: "Stefanus",
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
 
-	err = p.DBConnector.SoftDelete(&customer)
+	err = p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
 
-	err = p.DBConnector.Restore(&customer)
+	err = p.DBConnector.Restore(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
-func (p *DBSuite) Test012RestoreWithoutRecord() {
+func (p *DBTestSuite) Test012RestoreWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -275,12 +258,12 @@ func (p *DBSuite) Test012RestoreWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Restore(&customer)
+	err := p.DBConnector.Restore(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 
 }
 
-func (p *DBSuite) Test013Exists() {
+func (p *DBTestSuite) Test013Exists() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -288,15 +271,15 @@ func (p *DBSuite) Test013Exists() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
-	isExists, err := p.DBConnector.Exists(&customer)
+	isExists, err := p.DBConnector.Exists(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), isExists, true)
 }
 
-func (p *DBSuite) Test014ExistsWithoutRecord() {
+func (p *DBTestSuite) Test014ExistsWithoutRecord() {
 
 	customer := CustomerDAO{
 		ID:        uuid.New().String(),
@@ -304,13 +287,13 @@ func (p *DBSuite) Test014ExistsWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	isExists, err := p.DBConnector.Exists(&customer)
+	isExists, err := p.DBConnector.Exists(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), isExists, false)
 
 }
 
-func (p *DBSuite) Test015GetByPrimaryKeys() {
+func (p *DBTestSuite) Test015GetByPrimaryKeys() {
 
 	ID := uuid.NewString()
 
@@ -320,14 +303,14 @@ func (p *DBSuite) Test015GetByPrimaryKeys() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(&customer)
+	err := p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	emptyCustomer := CustomerDAO{
 		ID: ID,
 	}
 
-	err = p.DBConnector.GetByPrimaryKeys(&emptyCustomer)
+	err = p.DBConnector.GetByPrimaryKeys(p.T().Context(), &emptyCustomer)
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), emptyCustomer.FirstName, "Stefanus")
 	assert.Equal(p.T(), emptyCustomer.LastName, "Yudi")
