@@ -1,7 +1,7 @@
 package redis_test
 
 import (
-	"aiml-infrastructure/internal/base/cache/factory"
+	"aiml-infrastructure/internal/base/cache"
 	"aiml-infrastructure/internal/base/cache/testsuite"
 	"testing"
 
@@ -13,7 +13,7 @@ type RedisTestSuite struct {
 }
 
 func (r *RedisTestSuite) SetupSuite() {
-	r.CacheTestSuite.SetupCache(".env", factory.BackendRedis)
+	r.CacheTestSuite.SetupCache(".env", cache.BackendRedis)
 }
 
 func (r *RedisTestSuite) TearDownSuite() {

@@ -1,6 +1,10 @@
 package database
 
-import "context"
+import (
+	"context"
+	"errors"
+	"reflect"
+)
 
 type IDBConnector interface {
 	Insert(ctx context.Context, structPointer interface{}) error
@@ -14,4 +18,26 @@ type IDBConnector interface {
 	ExecuteSQL(ctx context.Context, sql string) error
 	Ping(ctx context.Context, timeLimitSecond int) error
 	Close() error
+}
+
+func ValidateStructPointer(value interface{}) error {
+	if value == nil {
+		return errors.New("struct pointer cannot be nil")
+	}
+
+	v := reflect.ValueOf(value)
+
+	if v.Kind() != reflect.Ptr {
+		return errors.New("struct pointer must be a pointer")
+	}
+
+	if v.IsNil() {
+		return errors.New("struct pointer cannot be nil")
+	}
+
+	if v.Elem().Kind() != reflect.Struct {
+		return errors.New("struct pointer must be a pointer")
+	}
+
+	return nil
 }

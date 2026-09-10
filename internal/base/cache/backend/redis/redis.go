@@ -16,7 +16,6 @@ type redisClient struct {
 }
 
 func NewRedisClient(config cache.Config) (*redisClient, error) {
-
 	client := redis.NewClient(&redis.Options{
 		Addr:     config.Address,
 		Username: config.Username,

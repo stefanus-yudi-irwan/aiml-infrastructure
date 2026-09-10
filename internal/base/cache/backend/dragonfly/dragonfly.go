@@ -16,7 +16,6 @@ type dragonflyClient struct {
 }
 
 func NewDragonFlyClient(config cache.Config) (*dragonflyClient, error) {
-
 	client := redis.NewClient(&redis.Options{
 		Addr:     config.Address,
 		Username: config.Username,

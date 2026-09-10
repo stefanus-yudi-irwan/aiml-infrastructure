@@ -1,7 +1,7 @@
 package memcached
 
 import (
-	"aiml-infrastructure/internal/base/cache/factory"
+	"aiml-infrastructure/internal/base/cache"
 	"aiml-infrastructure/internal/base/cache/testsuite"
 	"testing"
 
@@ -13,7 +13,7 @@ type MemcachedTestSuite struct {
 }
 
 func (d *MemcachedTestSuite) SetupSuite() {
-	d.CacheTestSuite.SetupCache(".env", factory.BackendMemcached)
+	d.CacheTestSuite.SetupCache(".env", cache.BackendMemcached)
 }
 
 func (d *MemcachedTestSuite) TearDownSuite() {

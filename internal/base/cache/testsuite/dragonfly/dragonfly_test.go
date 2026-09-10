@@ -1,7 +1,7 @@
 package dragonfly
 
 import (
-	"aiml-infrastructure/internal/base/cache/factory"
+	"aiml-infrastructure/internal/base/cache"
 	"aiml-infrastructure/internal/base/cache/testsuite"
 	"testing"
 
@@ -13,7 +13,7 @@ type DragonflyTestSuite struct {
 }
 
 func (d *DragonflyTestSuite) SetupSuite() {
-	d.CacheTestSuite.SetupCache(".env", factory.BackendDragonfly)
+	d.CacheTestSuite.SetupCache(".env", cache.BackendDragonfly)
 }
 
 func (d *DragonflyTestSuite) TearDownSuite() {

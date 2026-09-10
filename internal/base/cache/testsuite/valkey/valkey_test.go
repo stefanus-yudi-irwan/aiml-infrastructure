@@ -1,7 +1,7 @@
 package valkey
 
 import (
-	"aiml-infrastructure/internal/base/cache/factory"
+	"aiml-infrastructure/internal/base/cache"
 	"aiml-infrastructure/internal/base/cache/testsuite"
 	"testing"
 
@@ -13,7 +13,7 @@ type ValkeyTestSuite struct {
 }
 
 func (r *ValkeyTestSuite) SetupSuite() {
-	r.CacheTestSuite.SetupCache(".env", factory.BackendValkey)
+	r.CacheTestSuite.SetupCache(".env", cache.BackendValkey)
 }
 
 func (r *ValkeyTestSuite) TearDownSuite() {

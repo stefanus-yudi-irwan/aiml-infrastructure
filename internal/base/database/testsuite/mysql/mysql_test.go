@@ -2,7 +2,6 @@ package mysql
 
 import (
 	"aiml-infrastructure/internal/base/database"
-	"aiml-infrastructure/internal/base/database/factory"
 	"aiml-infrastructure/internal/base/database/testsuite"
 	"fmt"
 	"os"
@@ -38,11 +37,15 @@ func (p *MySQLTestSuite) SetupSuite() {
 		mysqlDB,
 	)
 
-	p.DBTestSuite.SetupDB(database.Config{
-		BackendDB:           factory.BackendMySQL,
+	config := database.Config{
+		Database:            database.BackendMySQL,
 		ConnectionPath:      connectionPath,
 		NumberOfConnections: MaxConnections,
-	}, "init/init.up.sql")
+	}
+
+	err = config.Validate()
+	assert.NoError(p.T(), err)
+	p.DBTestSuite.SetupDB(config, "init/init.up.sql")
 
 	testsuite.SetCustomerTableName("customer")
 }

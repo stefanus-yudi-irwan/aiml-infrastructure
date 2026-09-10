@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"aiml-infrastructure/internal/base/database"
-	"aiml-infrastructure/internal/base/database/factory"
 	"aiml-infrastructure/internal/base/database/testsuite"
 	"fmt"
 	"os"
@@ -40,11 +39,15 @@ func (p *PostgresTestSuite) SetupSuite() {
 		PgSSLMode,
 	)
 
-	p.DBTestSuite.SetupDB(database.Config{
-		BackendDB:           factory.BackendPostgreSQL,
+	config := database.Config{
+		Database:            database.BackendPostgreSQL,
 		ConnectionPath:      connectionPath,
 		NumberOfConnections: MaxConnections,
-	}, "init/init.up.sql")
+	}
+	err = config.Validate()
+	assert.NoError(p.T(), err)
+
+	p.DBTestSuite.SetupDB(config, "init/init.up.sql")
 
 	testsuite.SetCustomerTableName("test.customer")
 }

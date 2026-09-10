@@ -9,26 +9,17 @@ import (
 	"fmt"
 )
 
-const (
-	BackendRedis     cache.BackendCache = "redis"
-	BackendValkey    cache.BackendCache = "valkey"
-	BackendDragonfly cache.BackendCache = "dragonfly"
-	BackendMemcached cache.BackendCache = "memcached"
-)
-
 func NewCacheConnector(config cache.Config) (cache.ICacheConnector, error) {
-
 	switch config.Backend {
-	case BackendRedis:
+	case cache.BackendRedis:
 		return redis.NewRedisClient(config)
-	case BackendMemcached:
+	case cache.BackendMemcached:
 		return memcached.NewMemcachedClient(config)
-	case BackendValkey:
+	case cache.BackendValkey:
 		return valkey.NewValkeyClient(config)
-	case BackendDragonfly:
+	case cache.BackendDragonfly:
 		return dragonfly.NewDragonFlyClient(config)
 	default:
 		return nil, fmt.Errorf("unsupported cache backend: %s", config.Backend)
 	}
-
 }

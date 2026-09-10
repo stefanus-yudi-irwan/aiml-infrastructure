@@ -80,7 +80,10 @@ func (p *DBTestSuite) Test001Insert() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -94,7 +97,10 @@ func (p *DBTestSuite) Test002InsertWithConflict() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
@@ -114,7 +120,10 @@ func (p *DBTestSuite) Test003UpdateExistingRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	customer.FirstName = "Jane"
@@ -133,7 +142,10 @@ func (p *DBTestSuite) Test004UpdateWithoutRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Update(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Update(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -145,7 +157,10 @@ func (p *DBTestSuite) Test005UpsertNewRecord() {
 		LastName:  "Doe",
 	}
 
-	err := p.DBConnector.Upsert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 }
 
@@ -159,7 +174,10 @@ func (p *DBTestSuite) Test006UpsertExistingRecord() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.Upsert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Upsert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
@@ -181,7 +199,10 @@ func (p *DBTestSuite) Test007HardDelete() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	err = p.DBConnector.HardDelete(p.T().Context(), &customer)
@@ -196,7 +217,10 @@ func (p *DBTestSuite) Test008HardDeleteWithoutRecord() {
 		LastName:  "Smith",
 	}
 
-	err := p.DBConnector.HardDelete(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.HardDelete(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -208,7 +232,10 @@ func (p *DBTestSuite) Test009SoftDelete() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
@@ -225,7 +252,10 @@ func (p *DBTestSuite) Test010SoftDeleteWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.SoftDelete(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.SoftDelete(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 }
 
@@ -236,7 +266,10 @@ func (p *DBTestSuite) Test011RestoreExistingRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	time.Sleep(2 * time.Second)
@@ -258,7 +291,10 @@ func (p *DBTestSuite) Test012RestoreWithoutRecord() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Restore(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Restore(p.T().Context(), &customer)
 	assert.Error(p.T(), err)
 
 }
@@ -271,7 +307,10 @@ func (p *DBTestSuite) Test013Exists() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	isExists, err := p.DBConnector.Exists(p.T().Context(), &customer)
@@ -286,6 +325,9 @@ func (p *DBTestSuite) Test014ExistsWithoutRecord() {
 		FirstName: "Stefanus",
 		LastName:  "Yudi",
 	}
+
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
 
 	isExists, err := p.DBConnector.Exists(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
@@ -303,7 +345,10 @@ func (p *DBTestSuite) Test015GetByPrimaryKeys() {
 		LastName:  "Yudi",
 	}
 
-	err := p.DBConnector.Insert(p.T().Context(), &customer)
+	err := database.ValidateStructPointer(&customer)
+	assert.NoError(p.T(), err)
+
+	err = p.DBConnector.Insert(p.T().Context(), &customer)
 	assert.NoError(p.T(), err)
 
 	emptyCustomer := CustomerDAO{
@@ -314,4 +359,19 @@ func (p *DBTestSuite) Test015GetByPrimaryKeys() {
 	assert.NoError(p.T(), err)
 	assert.Equal(p.T(), emptyCustomer.FirstName, "Stefanus")
 	assert.Equal(p.T(), emptyCustomer.LastName, "Yudi")
+}
+
+func (p *DBTestSuite) Test016TestStructPointerValidation() {
+	customer := CustomerDAO{
+		ID:        uuid.New().String(),
+		FirstName: "Stefanus",
+		LastName:  "Yudi",
+	}
+	assert.NoError(p.T(), database.ValidateStructPointer(&customer))
+
+	var customer2 *CustomerDAO = nil
+	assert.Error(p.T(), database.ValidateStructPointer(customer2))
+
+	var value interface{} = customer2
+	assert.Error(p.T(), database.ValidateStructPointer(value))
 }

@@ -11,16 +11,15 @@ import (
 
 type memcachedClient struct {
 	client *memcache.Client
-	cfg    cache.Config
+	config cache.Config
 }
 
-func NewMemcachedClient(cfg cache.Config) (*memcachedClient, error) {
-
-	client := memcache.New(cfg.Address)
+func NewMemcachedClient(config cache.Config) (*memcachedClient, error) {
+	client := memcache.New(config.Address)
 
 	return &memcachedClient{
 		client: client,
-		cfg:    cfg,
+		config: config,
 	}, nil
 }
 
@@ -35,7 +34,7 @@ func (m *memcachedClient) Set(ctx context.Context, keyValue cache.KeyValue) erro
 	item := &memcache.Item{
 		Key:        keyValue.Key,
 		Value:      []byte(keyValue.Value.Data),
-		Expiration: int32(m.cfg.DefaultSecondExpiration),
+		Expiration: int32(m.config.DefaultSecondExpiration),
 	}
 
 	if err := m.client.Set(item); err != nil {
@@ -74,7 +73,7 @@ func (m *memcachedClient) SetBatch(ctx context.Context, keyValues ...cache.KeyVa
 		item := &memcache.Item{
 			Key:        keyValue.Key,
 			Value:      []byte(keyValue.Value.Data),
-			Expiration: int32(m.cfg.DefaultSecondExpiration),
+			Expiration: int32(m.config.DefaultSecondExpiration),
 		}
 
 		if err := m.client.Set(item); err != nil {

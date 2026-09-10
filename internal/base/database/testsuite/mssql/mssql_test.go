@@ -2,7 +2,6 @@ package mssql
 
 import (
 	"aiml-infrastructure/internal/base/database"
-	"aiml-infrastructure/internal/base/database/factory"
 	"aiml-infrastructure/internal/base/database/testsuite"
 	"fmt"
 	"os"
@@ -38,11 +37,15 @@ func (p *MSSQLTestSuite) SetupSuite() {
 		mssqlDB,
 	)
 
-	p.DBTestSuite.SetupDB(database.Config{
-		BackendDB:           factory.BackendMSSQL,
+	config := database.Config{
+		Database:            database.BackendMSSQL,
 		ConnectionPath:      connectionPath,
 		NumberOfConnections: MaxConnections,
-	}, "init/init.up.sql")
+	}
+
+	err = config.Validate()
+	assert.NoError(p.T(), err)
+	p.DBTestSuite.SetupDB(config, "init/init.up.sql")
 
 	testsuite.SetCustomerTableName("test.customer")
 }
