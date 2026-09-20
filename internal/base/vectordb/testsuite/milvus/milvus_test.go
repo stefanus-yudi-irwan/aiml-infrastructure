@@ -20,10 +20,8 @@ func (v *VectorDBTestSuite) SetupSuite() {
 	err := godotenv.Load(".env")
 	assert.NoError(v.T(), err)
 
-	clientAddress := os.Getenv("CLIENT_ADDRESS")
-
 	milvusConfig := milvus.MilvusConnectorConfig{
-		Address: clientAddress,
+		Address: os.Getenv("CLIENT_ADDRESS"),
 	}
 
 	v.MilvusConnector, err = milvus.NewMilvusConnector(
@@ -47,7 +45,10 @@ func TestMilvusTestSuite(t *testing.T) {
 
 func (v *VectorDBTestSuite) Test001CreateCollection() {
 	configMilvus := createTestCollectionConfig()
-	err := v.MilvusConnector.CreateCollection(v.T().Context(), configMilvus)
+	err := configMilvus.Validate()
+	assert.NoError(v.T(), err)
+
+	err = v.MilvusConnector.CreateCollection(v.T().Context(), configMilvus)
 	assert.NoError(v.T(), err)
 
 	for _, fieldConfig := range configMilvus.Fields {

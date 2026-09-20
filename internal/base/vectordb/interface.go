@@ -11,8 +11,7 @@ type IVectorDB interface {
 	GetByID(ctx context.Context, collection string, dataID string) error
 	CountVector(ctx context.Context, collection string) (int, error)
 	Close() error
-	//FlushAll(ctx context.Context, colleciton string) error
-	//FlushAll(ctx context.Context, collection string) error
+	FlushAll(ctx context.Context, collection string) error
 	//Ping(ctx context.Context) error
 	// UpsertBatch(ctx context.Context, collection string, vector []Vector) error
 	// DeleteBatch(ctx context.Context, collection string, vector []Vector) error

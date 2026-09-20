@@ -24,7 +24,7 @@ func NewMilvusConnector(ctx context.Context, config MilvusConnectorConfig) (*Mil
 		Address: config.Address,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Milvus client: %w", err)
+		return nil, fmt.Errorf("failed to create milvus client: %w", err)
 	}
 
 	return &MilvusConnector{
