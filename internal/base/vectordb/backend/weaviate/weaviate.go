@@ -9,35 +9,29 @@ import (
 	"github.com/weaviate/weaviate/entities/models"
 )
 
-type WeaviateConnector struct {
+type VectorDBConnector struct {
 	client *weaviate.Client
 }
 
-func NewWeaviateConnector(config WeaviateConnectorConfig) (*WeaviateConnector, error) {
-	weaviateClient, err := weaviate.NewClient(weaviate.Config{
+func NewVectorDBConnector(config VectorDBConnectorConfig) (*VectorDBConnector, error) {
+	client, err := weaviate.NewClient(weaviate.Config{
 		Host:   config.Host,
 		Scheme: config.Scheme,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create weaviate client: %w", err)
+		return nil, fmt.Errorf("failed to create weaviate client: %v", err)
 	}
 
-	return &WeaviateConnector{
-		client: weaviateClient,
+	return &VectorDBConnector{
+		client: client,
 	}, nil
 }
 
-func (w *WeaviateConnector) error(err error, method string, params ...interface{}) error {
-	return fmt.Errorf("WeaviateConnector.(%v)(%v) %w", method, params, err)
+func (v *VectorDBConnector) error(err error, method string, params ...interface{}) error {
+	return fmt.Errorf("VectorDBConnector.(%v)(%v) %v", method, params, err)
 }
 
-func (w *WeaviateConnector) CreateCollection(ctx context.Context, collectionConfig CollectionConfig) error {
-
-	_, err := w.checkCollectionExists(ctx, collectionConfig.Name)
-	if err != nil {
-		return w.error(err, "CreateCollection-001")
-	}
-
+func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConfig CollectionConfig) error {
 	// create weaviate model and properties
 	class := &models.Class{
 		Class:       collectionConfig.Name,
@@ -53,58 +47,76 @@ func (w *WeaviateConnector) CreateCollection(ctx context.Context, collectionConf
 			Tokenization: propertyConfig.Tokenization,
 		}
 
+		if len(propertyConfig.Properties) > 0 {
+			for _, nestedPropertyConfig := range propertyConfig.Properties {
+				nestedProperty := &models.NestedProperty{
+					Name:         nestedPropertyConfig.Name,
+					Description:  nestedPropertyConfig.Description,
+					DataType:     nestedPropertyConfig.DataType,
+					Tokenization: nestedPropertyConfig.Tokenization,
+				}
+
+				property.NestedProperties = append(property.NestedProperties, nestedProperty)
+			}
+		}
+
 		class.Properties = append(class.Properties, property)
 	}
 
 	// create collection
-	err = w.client.Schema().ClassCreator().WithClass(class).Do(ctx)
+	err := v.client.Schema().ClassCreator().WithClass(class).Do(ctx)
 	if err != nil {
-		return w.error(err, "CreateCollection-003", collectionConfig.Name)
+		return v.error(err, "CreateCollection-001", collectionConfig.Name)
 	}
 
 	return nil
 }
 
-func (w *WeaviateConnector) checkCollectionExists(ctx context.Context, collectionName string) (bool, error) {
+func (v *VectorDBConnector) DeleteCollection(ctx context.Context, collection string) error {
+	if err := v.client.Schema().ClassDeleter().
+		WithClassName(collection).
+		Do(ctx); err != nil {
+		return v.error(err,
+			"DeleteCollection-003",
+			fmt.Sprintf("failed to delete collection: %s", collection),
+		)
+	}
 
-	exists, err := w.client.Schema().ClassExistenceChecker().WithClassName(collectionName).Do(ctx)
+	return nil
+}
+
+func (v *VectorDBConnector) IsCollectionExists(ctx context.Context, collection string) (bool, error) {
+	exists, err := v.client.Schema().ClassExistenceChecker().WithClassName(collection).Do(ctx)
 	if err != nil {
-		return false, w.error(err,
+		return false, v.error(err,
 			"CreateCollection-001",
-			fmt.Sprintf("failed to create collection %s", collectionName))
+			fmt.Sprintf("failed to create collection %s", collection))
 	}
 	if exists {
-		return true, w.error(fmt.Errorf("collection %s already exists", collectionName),
+		return true, v.error(fmt.Errorf("collection %s already exists", collection),
 			"CreateCollection-002")
 	}
 
 	return false, nil
 }
 
-func (w *WeaviateConnector) DeleteCollection(ctx context.Context, collection string) error {
+func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
 	return nil
 }
 
-func (w *WeaviateConnector) IsCollectionExists(ctx context.Context, collection string) (bool, error) {
-	return false, nil
-}
-
-func (w *WeaviateConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
+func (v *VectorDBConnector) Delete(ctx context.Context, collection string, dataID string) error {
 	return nil
 }
 
-func (w *WeaviateConnector) Delete(ctx context.Context, collection string, dataID string) error {
+func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, dataID string) error {
 	return nil
 }
 
-func (w *WeaviateConnector) GetByID(ctx context.Context, collection string, dataID string) error {
-	return nil
-}
-
-func (w *WeaviateConnector) CountVector(ctx context.Context, collection string) (int, error) {
+func (v *VectorDBConnector) CountVector(ctx context.Context, collection string) (int, error) {
 	return 0, nil
 }
 
-func (w *WeaviateConnector) Close() error {
+func (v *VectorDBConnector) Close() error {
+	// weaviate client does not expose a close method
 	return nil
 }

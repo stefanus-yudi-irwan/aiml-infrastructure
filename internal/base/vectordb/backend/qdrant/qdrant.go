@@ -1,45 +1,38 @@
 package qdrant
 
 import (
+	"aiml-infrastructure/internal/base/vectordb"
 	"context"
 	"fmt"
 
 	"github.com/qdrant/go-client/qdrant"
 )
 
-type QdrantConnector struct {
+type VectorDBConnector struct {
 	client *qdrant.Client
 }
 
-func NewQdrantConnector(config QdrantConnectorConfig) (*QdrantConnector, error) {
-
+func NewVectorDBConnector(config VectorDBConnectorConfig) (*VectorDBConnector, error) {
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host:   config.Host,
-		Port:   config.Port,
-		APIKey: config.APIKey,
+		Host:                   config.Host,
+		Port:                   config.Port,
+		APIKey:                 config.APIKey,
+		SkipCompatibilityCheck: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}
 
-	return &QdrantConnector{
+	return &VectorDBConnector{
 		client: client,
 	}, nil
 }
 
-func (q *QdrantConnector) error(err error, method string, params ...interface{}) error {
-	return fmt.Errorf("QdrantConnector.(%v)(%v) %w", method, params, err)
+func (v *VectorDBConnector) error(err error, method string, params ...interface{}) error {
+	return fmt.Errorf("VectorDBConnector.(%v)(%v) %w", method, params, err)
 }
 
-func (q *QdrantConnector) CreateCollection(ctx context.Context, collectionConfig CollectionConfig) error {
-
-	_, err := q.checkCollectionExists(ctx, collectionConfig.Name)
-	if err != nil {
-		return q.error(err,
-			"CreateCollection-001",
-			"fail checking existing collection")
-	}
-
+func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConfig CollectionConfig) error {
 	collection := &qdrant.CreateCollection{
 		CollectionName: collectionConfig.Name,
 		VectorsConfig: qdrant.NewVectorsConfig(
@@ -61,29 +54,55 @@ func (q *QdrantConnector) CreateCollection(ctx context.Context, collectionConfig
 		collection.WriteConsistencyFactor = qdrant.PtrOf(collectionConfig.WriteConsistencyFactor)
 	}
 
-	if err = q.client.CreateCollection(ctx, collection); err != nil {
-		return q.error(err,
-			"CreateCollection-002",
+	if err := v.client.CreateCollection(ctx, collection); err != nil {
+		return v.error(err,
+			"CreateCollection-001",
 			fmt.Sprintf("fail to craete collection name %s", collectionConfig.Name))
 	}
 
 	return nil
 }
 
-func (q *QdrantConnector) checkCollectionExists(ctx context.Context, collectionName string) (bool, error) {
+func (v *VectorDBConnector) DeleteCollection(ctx context.Context, collection string) error {
 
-	exists, err := q.client.CollectionExists(ctx, collectionName)
+	return nil
+}
+
+func (v *VectorDBConnector) IsCollectionExists(ctx context.Context, collectionName string) (bool, error) {
+
+	exists, err := v.client.CollectionExists(ctx, collectionName)
 	if err != nil {
-		return false, q.error(err,
+		return false, v.error(err,
 			"checkCollectionExists-001",
 			fmt.Sprintf("fail to check collection exists: %s", collectionName))
 	}
 
 	if exists {
-		return true, q.error(err,
+		return true, v.error(err,
 			"checkCollectionExists-002",
 			fmt.Sprintf("collectin %s already exists", collectionName))
 	}
 
 	return false, nil
+}
+
+func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
+	return nil
+}
+
+func (v *VectorDBConnector) Delete(ctx context.Context, collection string, dataID string) error {
+	return nil
+}
+
+func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, dataID string) error {
+	return nil
+}
+
+func (v *VectorDBConnector) CountVector(ctx context.Context, collection string) (int, error) {
+	return 0, nil
+}
+
+func (v *VectorDBConnector) Close() error {
+	// qdrant client does not expose a close method
+	return nil
 }

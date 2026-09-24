@@ -5,6 +5,7 @@ import (
 	"aiml-infrastructure/internal/base/vectordb/backend/milvus"
 	"math/rand/v2"
 
+	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/entity"
 )
 
@@ -19,6 +20,27 @@ func createTestCollectionConfig() milvus.CollectionConfig {
 				PrimaryKey: true,
 				AutoID:     false,
 				MaxLength:  64,
+			},
+			{
+				Name:       "document_id",
+				DataType:   entity.FieldTypeVarChar,
+				PrimaryKey: true,
+				AutoID:     false,
+				MaxLength:  64,
+			},
+			{
+				Name:       "chunk_id",
+				DataType:   entity.FieldTypeVarChar,
+				PrimaryKey: true,
+				AutoID:     false,
+				MaxLength:  64,
+			},
+			{
+				Name:       "content",
+				DataType:   entity.FieldTypeVarChar,
+				PrimaryKey: true,
+				AutoID:     false,
+				MaxLength:  65535,
 			},
 			{
 				Name:      "vector",
@@ -43,9 +65,12 @@ func createTestCollectionConfig() milvus.CollectionConfig {
 
 func createTestVector(id string) vectordb.Data {
 	return vectordb.Data{
-		ID:     id,
-		Vector: generateRandomVector(128),
-		Fields: map[string]interface{}{
+		ID:         id,
+		DocumentID: uuid.New().String(),
+		ChunkID:    uuid.New().String(),
+		Content:    generateRandomString(65535),
+		Embedding:  generateRandomVector(128),
+		Metadata: map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"key1": "value1",
 				"key2": "value2",
@@ -62,4 +87,16 @@ func generateRandomVector(dim int) []float32 {
 	}
 
 	return vector
+}
+
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	result := make([]byte, length)
+
+	for i := range result {
+		result[i] = charset[rand.IntN(len(charset))]
+	}
+
+	return string(result)
 }

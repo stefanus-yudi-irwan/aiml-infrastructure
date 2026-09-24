@@ -13,7 +13,7 @@ import (
 
 type VectorDBTestSuite struct {
 	suite.Suite
-	QdrantConnector *qdrant.QdrantConnector
+	VectorDBConnector *qdrant.VectorDBConnector
 }
 
 func (v *VectorDBTestSuite) SetupSuite() {
@@ -22,21 +22,20 @@ func (v *VectorDBTestSuite) SetupSuite() {
 
 	port, err := strconv.Atoi(os.Getenv("PORT"))
 	assert.NoError(v.T(), err)
-	qdrantConfig := qdrant.QdrantConnectorConfig{
+	connectorConfig := qdrant.VectorDBConnectorConfig{
 		Host:   os.Getenv("HOST"),
 		Port:   port,
 		APIKey: os.Getenv("API_KEY"),
 	}
 
-	v.QdrantConnector, err = qdrant.NewQdrantConnector(qdrantConfig)
+	v.VectorDBConnector, err = qdrant.NewVectorDBConnector(connectorConfig)
 	assert.NoError(v.T(), err)
 }
 
 func (v *VectorDBTestSuite) TearDownSuite() {
-
 }
 
-func TestWeaviateTestSuite(t *testing.T) {
+func TestSuiteVectorDB(t *testing.T) {
 	suite.Run(t, new(VectorDBTestSuite))
 }
 
@@ -44,6 +43,6 @@ func (v *VectorDBTestSuite) Test001CreateCollection() {
 	collectionConfig := createTestCollectionConfig()
 	err := collectionConfig.Validate()
 	assert.NoError(v.T(), err)
-	err = v.QdrantConnector.CreateCollection(v.T().Context(), collectionConfig)
+	err = v.VectorDBConnector.CreateCollection(v.T().Context(), collectionConfig)
 	assert.NoError(v.T(), err)
 }

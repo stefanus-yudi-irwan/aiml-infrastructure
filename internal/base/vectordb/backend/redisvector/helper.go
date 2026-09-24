@@ -45,7 +45,7 @@ func createDataKey(collection string, id string) (string, error) {
 }
 
 func createVectorHash(data vectordb.Data) (map[string]interface{}, error) {
-	vectorByte, err := convertVectorFloat32toVectorByte(data.Vector)
+	vectorByte, err := convertVectorFloat32toVectorByte(data.Embedding)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +57,8 @@ func createVectorHash(data vectordb.Data) (map[string]interface{}, error) {
 }
 
 func createMetadataHash(data vectordb.Data) (map[string]interface{}, error) {
-	metadataHash := make(map[string]interface{}, len(data.Fields))
-	for key, value := range data.Fields {
+	metadataHash := make(map[string]interface{}, len(data.Metadata))
+	for key, value := range data.Metadata {
 		metadataHash[key] = value
 	}
 

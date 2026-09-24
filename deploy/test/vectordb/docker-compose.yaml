@@ -82,9 +82,9 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
     depends_on:
-      etcd:
+      milvus-etcd:
         condition: service_healthy
-      minio:
+      milvus-minio:
         condition: service_healthy
     healthcheck:
       test:
@@ -127,6 +127,15 @@ services:
     volumes:
       - weaviate_data:/var/lib/weaviate
 
+  weaviate-manager:
+    image: ghcr.io/aicode-world/weaviate-manager:latest
+    container_name: weaviate-manager
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - weaviate
+
   qdrant:
     container_name: qdrant
     image: qdrant/qdrant:latest
@@ -136,7 +145,19 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
-
+  
+  pgvector:
+    image: pgvector/pgvector:pg17
+    container_name: pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: db_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
 
 volumes:
   redisvector_data:
@@ -145,3 +166,4 @@ volumes:
   milvus_data:
   weaviate_data:
   qdrant_data:
+  pgvector_data:

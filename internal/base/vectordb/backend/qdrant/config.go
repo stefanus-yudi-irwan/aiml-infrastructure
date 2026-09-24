@@ -2,13 +2,13 @@ package qdrant
 
 import "errors"
 
-type QdrantConnectorConfig struct {
+type VectorDBConnectorConfig struct {
 	Host   string
 	Port   int
 	APIKey string
 }
 
-func (q *QdrantConnectorConfig) Validate() error {
+func (q *VectorDBConnectorConfig) Validate() error {
 	if q.Host == "" {
 		return errors.New("host cannot be empty")
 	}

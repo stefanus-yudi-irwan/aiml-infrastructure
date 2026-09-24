@@ -13,18 +13,18 @@ import (
 
 type VectorDBTestSuite struct {
 	suite.Suite
-	MilvusConnector *milvus.MilvusConnector
+	MilvusConnector *milvus.VectorDBConnector
 }
 
 func (v *VectorDBTestSuite) SetupSuite() {
 	err := godotenv.Load(".env")
 	assert.NoError(v.T(), err)
 
-	milvusConfig := milvus.MilvusConnectorConfig{
+	milvusConfig := milvus.VectorDBConnectorConfig{
 		Address: os.Getenv("CLIENT_ADDRESS"),
 	}
 
-	v.MilvusConnector, err = milvus.NewMilvusConnector(
+	v.MilvusConnector, err = milvus.NewVectorDBConnector(
 		v.T().Context(),
 		milvusConfig,
 	)
@@ -85,8 +85,11 @@ func (v *VectorDBTestSuite) Test004GetByID() {
 	retrievedData, err := v.MilvusConnector.GetByID(v.T().Context(), "test_collection", "test-id-002")
 	assert.NoError(v.T(), err)
 	assert.Equal(v.T(), vectorData.ID, retrievedData.ID)
-	assert.Equal(v.T(), vectorData.Vector, retrievedData.Vector)
-	assert.Equal(v.T(), vectorData.Fields, retrievedData.Fields)
+	assert.Equal(v.T(), vectorData.DocumentID, retrievedData.DocumentID)
+	assert.Equal(v.T(), vectorData.ChunkID, retrievedData.ChunkID)
+	assert.Equal(v.T(), vectorData.Content, retrievedData.Content)
+	assert.Equal(v.T(), vectorData.Embedding, retrievedData.Embedding)
+	assert.Equal(v.T(), vectorData.Metadata, retrievedData.Metadata)
 }
 
 func (v *VectorDBTestSuite) Test006Delete() {

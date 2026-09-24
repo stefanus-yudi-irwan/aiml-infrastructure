@@ -5,12 +5,12 @@ import (
 	"unicode"
 )
 
-type WeaviateConnectorConfig struct {
+type VectorDBConnectorConfig struct {
 	Host   string
 	Scheme string
 }
 
-func (w *WeaviateConnectorConfig) Validate() error {
+func (w *VectorDBConnectorConfig) Validate() error {
 	if w.Host == "" {
 		return errors.New("Host cannot be empty")
 	}
@@ -34,6 +34,7 @@ type PropertyConfig struct {
 	Description  string
 	DataType     []string
 	Tokenization string
+	Properties   []PropertyConfig
 }
 
 func (w *CollectionConfig) Validate() error {

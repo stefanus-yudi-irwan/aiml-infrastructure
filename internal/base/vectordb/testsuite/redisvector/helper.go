@@ -38,9 +38,12 @@ func createTestCollectionConfig(name string, on redisvector.IndexType) redisvect
 
 func generateTestData(id string) vectordb.Data {
 	return vectordb.Data{
-		ID:     id,
-		Vector: []float32{0.1, 0.2, 0.3, 0.4},
-		Fields: vectordb.Metadata{
+		ID:         id,
+		DocumentID: "",
+		ChunkID:    "",
+		Content:    "",
+		Embedding:  []float32{0.1, 0.2, 0.3, 0.4},
+		Metadata: vectordb.MetadataMap{
 			"name":   "test-data",
 			"source": "unit-test",
 			"active": true,

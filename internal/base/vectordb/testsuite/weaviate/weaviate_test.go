@@ -26,7 +26,6 @@ func (v *VectorDBTestSuite) SetupSuite() {
 
 	v.WeaviateConnector, err = weaviate.NewWeaviateConnector(weaviateConfig)
 	assert.NoError(v.T(), err)
-
 }
 
 func (v *VectorDBTestSuite) TearDownSuite() {

@@ -14,7 +14,7 @@ import (
 
 type VectorDBTestSuite struct {
 	suite.Suite
-	VectorDBConnector *redisvector.RedisVectorConnector
+	VectorDBConnector *redisvector.VectorDBConnector
 }
 
 func (v *VectorDBTestSuite) SetupSuite() {
@@ -27,7 +27,7 @@ func (v *VectorDBTestSuite) SetupSuite() {
 	clientDB, err := strconv.Atoi(os.Getenv("CLIENT_DB"))
 	assert.NoError(v.T(), err)
 
-	redisVectorConfig := redisvector.VectorDBClientConfig{
+	redisVectorConfig := redisvector.VectorDBConnectorConfig{
 		Address:  clientAddress,
 		Username: clientUsername,
 		Password: clientPassword,
@@ -41,7 +41,7 @@ func (v *VectorDBTestSuite) SetupSuite() {
 	err = redisVectorConfig.Validate()
 	assert.NoError(v.T(), err)
 
-	v.VectorDBConnector, err = redisvector.NewRedisVectorConnector(redisVectorConfig)
+	v.VectorDBConnector, err = redisvector.NewVectorDBConnector(redisVectorConfig)
 	assert.NoError(v.T(), err)
 }
 

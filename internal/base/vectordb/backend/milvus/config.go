@@ -6,14 +6,14 @@ import (
 	"github.com/milvus-io/milvus/client/v2/entity"
 )
 
-type MilvusConnectorConfig struct {
+type VectorDBConnectorConfig struct {
 	Address  string
 	Username string
 	Password string
 	Db       string
 }
 
-func (v *MilvusConnectorConfig) Validate() error {
+func (v *VectorDBConnectorConfig) Validate() error {
 	if v.Address == "" {
 		return errors.New("Address cannot be empty")
 	}

@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-type VectorDBClientConfig struct {
+type VectorDBConnectorConfig struct {
 	Address     string
 	Username    string
 	Password    string
@@ -14,7 +14,7 @@ type VectorDBClientConfig struct {
 	Collections []CollectionConfig
 }
 
-func (v *VectorDBClientConfig) Validate() error {
+func (v *VectorDBConnectorConfig) Validate() error {
 	if v.Address == "" {
 		return errors.New("Address cannot be empty")
 	}
