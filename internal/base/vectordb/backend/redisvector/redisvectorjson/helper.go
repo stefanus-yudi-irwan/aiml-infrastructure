@@ -1,11 +1,13 @@
-package redisvector
+package redisvectorjson
 
 import (
-	"aiml-infrastructure/internal/base/vectordb"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+
+	"github.com/go-redis/redis/v8"
 )
 
 func convertVectorFloat32toVectorByte(vectorFloat32 []float32) ([]byte, error) {
@@ -44,34 +46,22 @@ func createDataKey(collection string, id string) (string, error) {
 	return collection + ":" + id, nil
 }
 
-func createVectorHash(data vectordb.Data) (map[string]interface{}, error) {
-	vectorByte, err := convertVectorFloat32toVectorByte(data.Embedding)
-	if err != nil {
-		return nil, err
+func queueDelete(ctx context.Context, pipe redis.Pipeliner, collection string, ids ...string) error {
+
+	keys := make([]string, 0, len(ids))
+
+	for _, id := range ids {
+		hashKey, err := createDataKey(collection, id)
+		if err != nil {
+			return fmt.Errorf("fail to create dataKey: %v", id)
+		}
+		keys = append(keys, hashKey)
+
 	}
 
-	vectorHash := make(map[string]interface{})
-	vectorHash["vector"] = vectorByte
-
-	return vectorHash, nil
-}
-
-func createMetadataHash(data vectordb.Data) (map[string]interface{}, error) {
-	metadataHash := make(map[string]interface{}, len(data.Metadata))
-	for key, value := range data.Metadata {
-		metadataHash[key] = value
+	if len(keys) > 0 {
+		pipe.Del(ctx, keys...)
 	}
 
-	return metadataHash, nil
-}
-
-func createVectorMetadataHash(vectorHash, metadataHash map[string]interface{}) map[string]interface{} {
-	vectorMetadataHash := make(map[string]interface{}, len(vectorHash)+len(metadataHash))
-	for vectorKey, vectorValue := range vectorHash {
-		vectorMetadataHash[vectorKey] = vectorValue
-	}
-	for metadataKey, metadataValue := range vectorHash {
-		vectorMetadataHash[metadataKey] = metadataValue
-	}
-	return vectorMetadataHash
+	return nil
 }

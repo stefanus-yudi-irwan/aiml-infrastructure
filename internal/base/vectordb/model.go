@@ -5,12 +5,21 @@ import (
 	"reflect"
 )
 
+var (
+	IDColumnName         string = "id"
+	DocumentIDColumnName string = "document_id"
+	ChunkIDColumnName    string = "chunk_id"
+	ContentColumnName    string = "content"
+	EmbeddingColumnName  string = "embedding"
+	MetadataColumnName   string = "metadata"
+)
+
 type Data struct {
 	ID         string      `json:"id"`
 	DocumentID string      `json:"document_id"`
 	ChunkID    string      `json:"chunk_id"`
 	Content    string      `json:"content"`
-	Embedding  []float32   `json:"vector,omitempty"`
+	Embedding  []float32   `json:"embedding,omitempty"`
 	Metadata   MetadataMap `json:"metadata,omitempty"`
 }
 

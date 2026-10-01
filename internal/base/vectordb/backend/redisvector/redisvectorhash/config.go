@@ -1,4 +1,4 @@
-package redisvector
+package redisvectorhash
 
 import (
 	"errors"
@@ -7,11 +7,10 @@ import (
 )
 
 type VectorDBConnectorConfig struct {
-	Address     string
-	Username    string
-	Password    string
-	Db          int
-	Collections []CollectionConfig
+	Address  string
+	Username string
+	Password string
+	Db       int
 }
 
 func (v *VectorDBConnectorConfig) Validate() error {
@@ -93,16 +92,8 @@ const (
 	FieldTypeGeo     FieldType = "GEO"
 )
 
-type IndexType string
-
-const (
-	HASH_TYPE IndexType = "HASH"
-	JSON_TYPE IndexType = "JSON"
-)
-
 type CollectionConfig struct {
 	Name   string
-	On     IndexType
 	Fields []FieldConfig
 }
 
@@ -112,11 +103,7 @@ func (c *CollectionConfig) Validate() error {
 		return errors.New("collection name cannot be empty")
 	}
 
-	if c.On == "" {
-		return errors.New("collection index type cannot be empty")
-	}
-
-	if c.Fields == nil || len(c.Fields) == 0 {
+	if len(c.Fields) == 0 {
 		return errors.New("collection fields cannot be empty")
 	}
 
@@ -152,7 +139,7 @@ func (c *CollectionConfig) Validate() error {
 func (c CollectionConfig) CreateCollectionQuery() []interface{} {
 	collectionQuery := []interface{}{
 		"FT.CREATE", c.Name,
-		"ON", string(c.On),
+		"ON", "HASH",
 		"PREFIX", 1, createIndexPrefix(c.Name),
 		"SCHEMA",
 	}
@@ -160,15 +147,15 @@ func (c CollectionConfig) CreateCollectionQuery() []interface{} {
 	for _, field := range c.Fields {
 		switch field.Type {
 		case FieldTypeVector:
-			collectionQuery = append(collectionQuery, field.VectorField.CreateVectorFieldQuery(c.On)...)
+			collectionQuery = append(collectionQuery, field.VectorField.CreateVectorFieldQuery()...)
 		case FieldTypeTag:
-			collectionQuery = append(collectionQuery, field.TagField.CreateTagFieldQuery(c.On)...)
+			collectionQuery = append(collectionQuery, field.TagField.CreateTagFieldQuery()...)
 		case FieldTypeText:
-			collectionQuery = append(collectionQuery, field.TextField.CreateTextFieldQuery(c.On)...)
+			collectionQuery = append(collectionQuery, field.TextField.CreateTextFieldQuery()...)
 		case FieldTypeNumeric:
-			collectionQuery = append(collectionQuery, field.NumericField.CreateNumericFieldQuery(c.On)...)
+			collectionQuery = append(collectionQuery, field.NumericField.CreateNumericFieldQuery()...)
 		case FieldTypeGeo:
-			collectionQuery = append(collectionQuery, field.GeoField.CreateGeoFieldQuery(c.On)...)
+			collectionQuery = append(collectionQuery, field.GeoField.CreateGeoFieldQuery()...)
 		}
 	}
 
@@ -238,24 +225,14 @@ func (v *VectorFieldConfig) Validate() error {
 	return nil
 }
 
-func (v *VectorFieldConfig) CreateVectorFieldQuery(indexType IndexType) []interface{} {
+func (v *VectorFieldConfig) CreateVectorFieldQuery() []interface{} {
 	var vectorFieldQuery []interface{}
 
-	switch indexType {
-	case HASH_TYPE:
-		vectorFieldQuery = append(vectorFieldQuery,
-			v.Name,
-			string(FieldTypeVector),
-			string(v.Algorithm),
-		)
-	case JSON_TYPE:
-		vectorFieldQuery = append(vectorFieldQuery,
-			"$."+v.Name, "AS", v.Name,
-			string(FieldTypeVector),
-			string(v.Algorithm),
-		)
-
-	}
+	vectorFieldQuery = append(vectorFieldQuery,
+		v.Name,
+		string(FieldTypeVector),
+		string(v.Algorithm),
+	)
 
 	switch v.Algorithm {
 	case HNSW:
@@ -283,7 +260,6 @@ func (v *VectorFieldConfig) CreateVectorFieldQuery(indexType IndexType) []interf
 
 type TagFieldConfig struct {
 	Name      string
-	JSONName  string
 	Separator string
 	Sortable  bool
 	NoIndex   bool
@@ -296,15 +272,10 @@ func (t *TagFieldConfig) Validate() error {
 	return nil
 }
 
-func (t *TagFieldConfig) CreateTagFieldQuery(indexType IndexType) []interface{} {
+func (t *TagFieldConfig) CreateTagFieldQuery() []interface{} {
 	var tagFieldQuery []interface{}
 
-	switch indexType {
-	case HASH_TYPE:
-		tagFieldQuery = append(tagFieldQuery, t.Name, string(FieldTypeTag))
-	case JSON_TYPE:
-		tagFieldQuery = append(tagFieldQuery, "$.metadata."+t.Name, "AS", t.Name, string(FieldTypeTag))
-	}
+	tagFieldQuery = append(tagFieldQuery, t.Name, string(FieldTypeTag))
 
 	if t.Separator != "" {
 		tagFieldQuery = append(tagFieldQuery, "SEPARATOR", t.Separator)
@@ -346,15 +317,10 @@ func (t *TextFieldConfig) Validate() error {
 	return nil
 }
 
-func (t *TextFieldConfig) CreateTextFieldQuery(indexType IndexType) []interface{} {
+func (t *TextFieldConfig) CreateTextFieldQuery() []interface{} {
 	var textFieldQuery []interface{}
 
-	switch indexType {
-	case HASH_TYPE:
-		textFieldQuery = append(textFieldQuery, t.Name, string(FieldTypeText))
-	case JSON_TYPE:
-		textFieldQuery = append(textFieldQuery, "$.metadata."+t.Name, "AS", t.Name, string(FieldTypeText))
-	}
+	textFieldQuery = append(textFieldQuery, t.Name, string(FieldTypeText))
 
 	if t.Weight != 0 {
 		textFieldQuery = append(textFieldQuery, "WEIGHT", t.Weight)
@@ -392,15 +358,10 @@ func (t *NumericFieldConfig) Validate() error {
 	return nil
 }
 
-func (t *NumericFieldConfig) CreateNumericFieldQuery(indexType IndexType) []interface{} {
+func (t *NumericFieldConfig) CreateNumericFieldQuery() []interface{} {
 	var numericFieldQuery []interface{}
 
-	switch indexType {
-	case HASH_TYPE:
-		numericFieldQuery = append(numericFieldQuery, t.Name, string(FieldTypeNumeric))
-	case JSON_TYPE:
-		numericFieldQuery = append(numericFieldQuery, "$.metadata."+t.Name, "AS", t.Name, string(FieldTypeNumeric))
-	}
+	numericFieldQuery = append(numericFieldQuery, t.Name, string(FieldTypeNumeric))
 
 	if t.Sortable {
 		numericFieldQuery = append(numericFieldQuery, "SORTABLE")
@@ -426,15 +387,10 @@ func (t *GeoFieldConfig) Validate() error {
 	return nil
 }
 
-func (t *GeoFieldConfig) CreateGeoFieldQuery(indexType IndexType) []interface{} {
+func (t *GeoFieldConfig) CreateGeoFieldQuery() []interface{} {
 	var geoFieldQuery []interface{}
 
-	switch indexType {
-	case HASH_TYPE:
-		geoFieldQuery = append(geoFieldQuery, t.Name, string(FieldTypeGeo))
-	case JSON_TYPE:
-		geoFieldQuery = append(geoFieldQuery, "$.metadata."+t.Name, "AS", t.Name, string(FieldTypeGeo))
-	}
+	geoFieldQuery = append(geoFieldQuery, t.Name, string(FieldTypeGeo))
 
 	if t.Sortable {
 		geoFieldQuery = append(geoFieldQuery, "SORTABLE")
