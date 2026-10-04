@@ -1,6 +1,10 @@
 package qdrant
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/qdrant/go-client/qdrant"
+)
 
 type VectorDBConnectorConfig struct {
 	Host   string
@@ -24,21 +28,47 @@ func (q *VectorDBConnectorConfig) Validate() error {
 	return nil
 }
 
-type Distance string
-
 var (
-	DistanceCosine Distance = "cosine"
-	DistanceDot    Distance = "dot"
-	DistanceEuclid Distance = "euclid"
+	DistanceCosine = qdrant.Distance_Cosine
+	DistanceDot    = qdrant.Distance_Dot
+	DistanceEuclid = qdrant.Distance_Euclid
+)
+
+const (
+	M_SMALL  = 16
+	M_MEDIUM = 24
+	M_LARGE  = 32
+	M_JUMBO  = 40
+)
+
+const (
+	EF_CONSTRUCTION_SMALL  = 100
+	EF_CONSTRUCTION_MEDIUM = 200
+	EF_CONSTRUCTION_LARGE  = 300
+	EF_CONSTRUCTION_JUMBO  = 400
+)
+
+const (
+	FULL_SCAN_THRESHOLD_SMALL  = 1000
+	FULL_SCAN_THRESHOLD_MEDIUM = 10000
+	FULL_SCAN_THRESHOLD_LARGE  = 100000
+	FULL_SCAN_THRESHOLD_JUMBO  = 1000000
 )
 
 type CollectionConfig struct {
 	Name                   string
 	Dimension              uint64
-	Distance               Distance
+	Distance               qdrant.Distance
+	HNSW                   *HNSWConfig
 	ShardNumber            uint32
 	ReplicationFactor      uint32
 	WriteConsistencyFactor uint32
+}
+
+type HNSWConfig struct {
+	M                 int
+	EFConstruction    int
+	FullScanThreshold int
 }
 
 func (q *CollectionConfig) Validate() error {
@@ -54,6 +84,20 @@ func (q *CollectionConfig) Validate() error {
 	case DistanceCosine, DistanceDot, DistanceEuclid:
 	default:
 		return errors.New("invalid distance")
+	}
+
+	if q.HNSW != nil {
+		if q.HNSW.M <= 0 {
+			return errors.New("hnsw m cannot be empty")
+		}
+
+		if q.HNSW.EFConstruction <= 0 {
+			return errors.New("hnsw ef construction cannot be empty")
+		}
+
+		if q.HNSW.FullScanThreshold <= 0 {
+			return errors.New("hnsw full scan threshold cannot be empty")
+		}
 	}
 
 	return nil

@@ -118,31 +118,33 @@ func (v *VectorDBConnector) FlushAll(ctx context.Context) error {
 	return nil
 }
 
-func (f *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
+func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
 
 	dataKey, err := createDataKey(collection, data.ID)
 	if err != nil {
-		return f.error(err, "Upsert-001")
+		return v.error(err, "Upsert-001")
 	}
 
 	// update both embedding and metadata
 	if data.Embedding != nil && data.Metadata != nil {
 		json, err := json.Marshal(data)
 		if err != nil {
-			return f.error(err, "Upsert-002", "fail to marshal JSON document", data.ID)
+			return v.error(err, "Upsert-002", "fail to marshal JSON document", data.ID)
 		}
 
-		if err := f.client.Do(ctx, "JSON.SET", dataKey, "$", string(json)).Err(); err != nil {
-			return f.error(err, "Upsert-003", "fail to insert JSON document", data.ID)
+		if err := v.client.Do(ctx, "JSON.SET", dataKey, "$", string(json)).Err(); err != nil {
+			return v.error(err, "Upsert-003", "fail to insert JSON document", data.ID)
 		}
 
 		return nil
 	}
 
 	// if data is incomplete check for existence of the key in the database
-	isExists, err := f.IsKeyExists(ctx, collection, data.ID)
+	isExists, err := v.IsKeyExists(ctx, collection, data.ID)
 	if err != nil {
-		return f.error(err, "Upsert-002", "fail to check key existence", data.ID)
+		return v.error(err,
+			"Upsert-002",
+			fmt.Sprintf("fail to check key existence: %v", data.ID))
 	}
 
 	switch {
@@ -150,17 +152,17 @@ func (f *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 		// update embedding only
 		embeddingJSON, err := json.Marshal(data.Embedding)
 		if err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-003",
 				fmt.Sprintf("fail to marshal JSON embedding: %v", data.ID))
 		}
 
-		if err := f.client.Do(ctx,
+		if err := v.client.Do(ctx,
 			"JSON.SET",
 			dataKey,
 			fmt.Sprintf("$.%s", vectordb.EmbeddingColumnName),
 			string(embeddingJSON)).Err(); err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-004",
 				fmt.Sprintf("fail to update JSON embedding: %v", data.ID))
 		}
@@ -169,17 +171,17 @@ func (f *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 		// update metadata only
 		metadataJSON, err := json.Marshal(data.Metadata)
 		if err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-005",
 				fmt.Sprintf("fail to marshal JSON metadata: %v", data.ID))
 		}
 
-		if err := f.client.Do(ctx,
+		if err := v.client.Do(ctx,
 			"JSON.SET",
 			dataKey,
 			fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
 			string(metadataJSON)).Err(); err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-006",
 				fmt.Sprintf("fail to update JSON metadata: %v", data.ID))
 		}
@@ -188,18 +190,18 @@ func (f *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 		// insert embedding only
 		jsonData, err := json.Marshal(data)
 		if err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-007",
 				fmt.Sprintf("fail to marshal JSON document: %v", data.ID))
 		}
 
-		if err := f.client.Do(ctx,
+		if err := v.client.Do(ctx,
 			"JSON.SET",
 			dataKey,
 			"$",
 			string(jsonData),
 			"NX").Err(); err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-008",
 				fmt.Sprintf("fail to insert JSON document: %v", data.ID))
 		}
@@ -208,21 +210,25 @@ func (f *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 		// insert metadata only
 		jsonData, err := json.Marshal(data)
 		if err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-009",
 				fmt.Sprintf("fail to marshal JSON document: %v", data.ID))
 		}
 
-		if err := f.client.Do(ctx,
+		if err := v.client.Do(ctx,
 			"JSON.SET",
 			dataKey,
 			"$",
 			string(jsonData),
 			"NX").Err(); err != nil {
-			return f.error(err,
+			return v.error(err,
 				"Upsert-010",
 				fmt.Sprintf("fail to insert JSON document: %v", data.ID))
 		}
+	default:
+		return v.error(errors.New("either embedding or metadata must be provided"),
+			"Upsert-011",
+			fmt.Sprintf("cannot upsert data point: %v", data.ID))
 	}
 
 	return nil
