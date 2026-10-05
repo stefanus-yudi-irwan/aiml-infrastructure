@@ -3,15 +3,14 @@ package qdrant
 import (
 	"aiml-infrastructure/internal/base/vectordb"
 	"aiml-infrastructure/internal/base/vectordb/backend/qdrant"
-	"fmt"
 	"math/rand/v2"
 
 	"github.com/google/uuid"
 )
 
 var (
-	TEST_VECTOR_DIMENSION int = 512
-	TEST_CONTENT_LENGTH   int = 3000
+	TEST_VECTOR_DIMENSION int = 128
+	TEST_CONTENT_LENGTH   int = 10000
 )
 
 func createTestCollectionConfig(collection string) qdrant.CollectionConfig {
@@ -50,24 +49,22 @@ func generateTestData(id string) vectordb.Data {
 	}
 }
 
-func generateBulkTestData(dataCount int, prefixID string) []vectordb.Data {
+func generateBulkTestData(dataID []string) []vectordb.Data {
 
-	bulkData := make([]vectordb.Data, dataCount)
+	bulkData := make([]vectordb.Data, len(dataID))
 
-	for index := 0; index < dataCount; index++ {
-		bulkData[index] = generateTestData(
-			fmt.Sprintf("%s-%d", prefixID, index),
-		)
+	for index, id := range dataID {
+		bulkData[index] = generateTestData(id)
 	}
 
 	return bulkData
 }
 
-func generateBulkTestDataID(dataCount int, prefixID string) []string {
+func generateBulkTestDataID(dataCount int) []string {
 	bulkDataID := make([]string, dataCount)
 
 	for index := 0; index < dataCount; index++ {
-		bulkDataID[index] = fmt.Sprintf("%s-%d", prefixID, index)
+		bulkDataID[index] = uuid.New().String()
 	}
 
 	return bulkDataID

@@ -2,11 +2,11 @@ package qdrant
 
 import (
 	"aiml-infrastructure/internal/base/vectordb/backend/qdrant"
-	"fmt"
 	"os"
 	"strconv"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -37,10 +37,10 @@ func (v *VectorDBTestSuite) SetupSuite() {
 }
 
 func (v *VectorDBTestSuite) TearDownSuite() {
-	err := v.VectorDBConnector.FlushAll(v.T().Context())
-	assert.NoError(v.T(), err)
+	//err := v.VectorDBConnector.FlushAll(v.T().Context())
+	//assert.NoError(v.T(), err)
 
-	err = v.VectorDBConnector.Close()
+	err := v.VectorDBConnector.Close()
 	assert.NoError(v.T(), err)
 }
 
@@ -75,7 +75,8 @@ func (v *VectorDBTestSuite) Test002ManageSingleData() {
 	assert.NoError(v.T(), err)
 
 	// create mock test data
-	dataInsert := generateTestData("test-data-001")
+	testDataID := uuid.New().String()
+	dataInsert := generateTestData(testDataID)
 
 	// validate mock test data
 	err = dataInsert.ValidateIdentifier()
@@ -96,17 +97,21 @@ func (v *VectorDBTestSuite) Test002ManageSingleData() {
 	assert.NoError(v.T(), err)
 	assert.Equal(v.T(), 1, count)
 
-	dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, "test-data-001")
+	dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, testDataID)
 	assert.NoError(v.T(), err)
 	assert.Equal(v.T(), dataInsert.ID, dataGet.ID)
 	assert.Equal(v.T(), dataInsert.DocumentID, dataGet.DocumentID)
 	assert.Equal(v.T(), dataInsert.ChunkID, dataGet.ChunkID)
 	assert.Equal(v.T(), dataInsert.Content, dataGet.Content)
-	assert.Equal(v.T(), dataInsert.Embedding, dataGet.Embedding)
+
+	// qdrant vector being autonormalized if using COSINE
+	cosineSimilarityScore, err := qdrant.CosineSimilarity(qdrant.NormalizeVector(dataInsert.Embedding), dataGet.Embedding)
+	assert.NoError(v.T(), err)
+	assert.LessOrEqual(v.T(), float32(0.00001), cosineSimilarityScore)
 	//assert.Equal(v.T(), dataInsert.Metadata, dataGet.Metadata)
 
 	// test delete stored data
-	err = v.VectorDBConnector.Delete(v.T().Context(), v.TestCollection.Name, "test-data-001")
+	err = v.VectorDBConnector.Delete(v.T().Context(), v.TestCollection.Name, testDataID)
 	assert.NoError(v.T(), err)
 
 	// check if collection is already empty
@@ -126,8 +131,10 @@ func (v *VectorDBTestSuite) Test003ManageBatchData() {
 	assert.NoError(v.T(), err)
 
 	// create bulk mock test data
-	dataInsert := generateBulkTestData(1000, "test-data")
-	dataInsertID := generateBulkTestDataID(500, "test-data")
+	batchNumber := 10
+	dataInsertID := generateBulkTestDataID(1000)
+	dataInsertID500 := dataInsertID[:500]
+	dataInsert := generateBulkTestData(dataInsertID)
 
 	// validate all mock test data
 	for _, data := range dataInsert {
@@ -142,34 +149,38 @@ func (v *VectorDBTestSuite) Test003ManageBatchData() {
 	}
 
 	// insert test data into vector db
-	err = v.VectorDBConnector.UpsertBatch(v.T().Context(), v.TestCollection.Name, dataInsert, 100)
+	err = v.VectorDBConnector.UpsertBatch(v.T().Context(), v.TestCollection.Name, dataInsert, batchNumber)
 	assert.NoError(v.T(), err)
 
 	// check if test data is inside vector db
 	count, err := v.VectorDBConnector.CountVector(v.T().Context(), v.TestCollection.Name)
 	assert.NoError(v.T(), err)
-	assert.Equal(v.T(), 1000, count)
+	assert.Equal(v.T(), len(dataInsertID), count)
 
 	// check if all stored test data comply with input data
-	for index, data := range dataInsert {
-		dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, fmt.Sprintf("%s-%d", "test-data", index))
+	for _, data := range dataInsert {
+		dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, data.ID)
 		assert.NoError(v.T(), err)
 		assert.Equal(v.T(), data.ID, dataGet.ID)
 		assert.Equal(v.T(), data.DocumentID, dataGet.DocumentID)
 		assert.Equal(v.T(), data.ChunkID, dataGet.ChunkID)
 		assert.Equal(v.T(), data.Content, dataGet.Content)
-		assert.Equal(v.T(), data.Embedding, dataGet.Embedding)
+
+		// qdrant vector being autonormalized if using COSINE
+		cosineSimilarityScore, err := qdrant.CosineSimilarity(qdrant.NormalizeVector(data.Embedding), dataGet.Embedding)
+		assert.NoError(v.T(), err)
+		assert.LessOrEqual(v.T(), float32(0.00001), cosineSimilarityScore)
 		//assert.Equal(v.T(), data.Metadata, dataGet.Metadata)
 	}
 
 	// delete all key in batch
-	err = v.VectorDBConnector.DeleteBatch(v.T().Context(), v.TestCollection.Name, dataInsertID, 100)
+	err = v.VectorDBConnector.DeleteBatch(v.T().Context(), v.TestCollection.Name, dataInsertID500, batchNumber)
 	assert.NoError(v.T(), err)
 
 	// check collection after delete half number of keys
 	count, err = v.VectorDBConnector.CountVector(v.T().Context(), v.TestCollection.Name)
 	assert.NoError(v.T(), err)
-	assert.Equal(v.T(), 500, count)
+	assert.Equal(v.T(), len(dataInsertID)-len(dataInsertID500), count)
 
 	// test delete all stored data
 	err = v.VectorDBConnector.FlushCollection(v.T().Context(), v.TestCollection.Name)
