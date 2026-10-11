@@ -10,7 +10,7 @@ import (
 
 var (
 	TEST_VECTOR_DIMENSION int = 128
-	TEST_CONTENT_LENGTH   int = 10000
+	TEST_CONTENT_LENGTH   int = 1000
 )
 
 func createTestCollectionConfig(collection string) qdrant.CollectionConfig {

@@ -21,7 +21,7 @@ func NewVectorDBConnector(config VectorDBConnectorConfig) (*VectorDBConnector, e
 		SkipCompatibilityCheck: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
+		return nil, fmt.Errorf("failed to create vectordb client: %w", err)
 	}
 
 	return &VectorDBConnector{
@@ -75,12 +75,12 @@ func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConf
 	return nil
 }
 
-func (v *VectorDBConnector) IsCollectionExists(ctx context.Context, collectionName string) (bool, error) {
-	exists, err := v.client.CollectionExists(ctx, collectionName)
+func (v *VectorDBConnector) IsCollectionExists(ctx context.Context, collection string) (bool, error) {
+	exists, err := v.client.CollectionExists(ctx, collection)
 	if err != nil {
 		return false, v.error(err,
 			"IsCollectionExists-001",
-			fmt.Sprintf("fail to check collection exists: %s", collectionName))
+			fmt.Sprintf("fail to check collection exists: %s", collection))
 	}
 
 	return exists, nil
@@ -143,7 +143,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			fmt.Sprintf("fail to create qdrant point: %v", data.ID))
 	}
 
-	// updat both embedding and metadata if both are present
+	// update both embedding and metadata if both are present
 	if data.Embedding != nil && data.Metadata != nil && len(data.Metadata) > 0 {
 		_, err = v.client.Upsert(ctx,
 			&qdrant.UpsertPoints{
@@ -280,7 +280,9 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 
 	for start := 0; start < len(arrayData); start += batchNumber {
 		if err := ctx.Err(); err != nil {
-			return err
+			return v.error(err,
+				"UpsertBatch-002",
+				"context is cancelled")
 		}
 
 		end := start + batchNumber
@@ -302,7 +304,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 			})
 		if err != nil {
 			return v.error(err,
-				"UpsertBatch-002",
+				"UpsertBatch-003",
 				fmt.Sprintf("fail to get existing points: collection=%s", collection),
 			)
 		}
@@ -329,7 +331,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 			pointStruct, err := createQdrantPoint(data)
 			if err != nil {
 				return v.error(err,
-					"UpsertBatch-003",
+					"UpsertBatch-004",
 					fmt.Sprintf("fail to create qdrant point: %v", data.ID))
 			}
 
@@ -372,13 +374,13 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 					errors.New(
 						"cannot insert metadata without embedding for a new point",
 					),
-					"UpsertBatch-004",
+					"UpsertBatch-005",
 					fmt.Sprintf("cannot insert metadata-only point: %v", data.ID),
 				)
 
 			default:
 				return v.error(errors.New("either embedding or metadata must be provided"),
-					"UpsertBatch-005",
+					"UpsertBatch-006",
 					fmt.Sprintf("cannot upsert data point: %v", data.ID))
 			}
 
@@ -391,7 +393,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 				)
 				if err != nil {
 					return v.error(err,
-						"UpsertBatch-006",
+						"UpsertBatch-007",
 						fmt.Sprintf("fail to upsert points: collection=%s", collection),
 					)
 				}
@@ -406,7 +408,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 				)
 				if err != nil {
 					return v.error(err,
-						"UpsertBatch-007",
+						"UpsertBatch-008",
 						fmt.Sprintf("fail to update vectors: collection=%s", collection),
 					)
 				}
@@ -421,7 +423,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 
 				if err != nil {
 					return v.error(err,
-						"UpsertBatch-008",
+						"UpsertBatch-009",
 						fmt.Sprintf("fail to update payloads: collection=%s", collection),
 					)
 				}

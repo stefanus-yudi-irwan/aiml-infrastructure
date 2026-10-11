@@ -37,10 +37,10 @@ func (v *VectorDBTestSuite) SetupSuite() {
 }
 
 func (v *VectorDBTestSuite) TearDownSuite() {
-	//err := v.VectorDBConnector.FlushAll(v.T().Context())
-	//assert.NoError(v.T(), err)
+	err := v.VectorDBConnector.FlushAll(v.T().Context())
+	assert.NoError(v.T(), err)
 
-	err := v.VectorDBConnector.Close()
+	err = v.VectorDBConnector.Close()
 	assert.NoError(v.T(), err)
 }
 
