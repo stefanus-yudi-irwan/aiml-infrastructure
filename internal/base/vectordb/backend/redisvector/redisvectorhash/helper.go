@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/go-redis/redis/v8"
@@ -59,16 +60,40 @@ func createIdentityHash(data vectordb.Data) map[string]interface{} {
 	return identityHash
 }
 
-func createEmbeddingHash(data vectordb.Data) (map[string]interface{}, error) {
-	embeddingByte, err := convertEmbeddingFloat32toEmbeddingByte(data.Embedding)
-	if err != nil {
-		return nil, err
+func createDenseEmbeddingHash(data vectordb.Data) (map[string]interface{}, error) {
+
+	denseEmbeddingHash := make(map[string]interface{})
+
+	for embeddingName, embedding := range data.DenseEmbeddings {
+		embeddingByte, err := convertEmbeddingFloat32toEmbeddingByte(
+			embedding.Values,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		denseEmbeddingHash[fmt.Sprintf("%s_%s",
+			vectordb.DenseEmbeddingColumnName,
+			embeddingName)] = embeddingByte
 	}
 
-	embeddingHash := make(map[string]interface{})
-	embeddingHash[vectordb.EmbeddingColumnName] = embeddingByte
+	return denseEmbeddingHash, nil
+}
 
-	return embeddingHash, nil
+func createSparseEmbeddingHash(data vectordb.Data) (map[string]interface{}, error) {
+	sparseEmbeddingHash := make(map[string]interface{})
+
+	for embeddingName, embedding := range data.SparseEmbeddings {
+		sparseEmbeddingJson, err := json.Marshal(embedding)
+		if err != nil {
+			return nil, err
+		}
+		sparseEmbeddingHash[fmt.Sprintf("%s_%s",
+			vectordb.SparseEmbeddingColumnName,
+			embeddingName)] = sparseEmbeddingJson
+	}
+
+	return sparseEmbeddingHash, nil
 }
 
 func createMetadataHash(data vectordb.Data) (map[string]interface{}, error) {
@@ -111,12 +136,22 @@ func queueUpsert(ctx context.Context, pipe redis.Pipeliner, collection string, d
 
 	hashValues := createIdentityHash(data)
 
-	if data.Embedding != nil {
-		vectorHash, err := createEmbeddingHash(data)
+	if data.DenseEmbeddings != nil {
+		vectorHash, err := createDenseEmbeddingHash(data)
 		if err != nil {
-			return fmt.Errorf("fail to create vectorHash: %v", data.ID)
+			return fmt.Errorf("fail to create denseEmbeddingHash: %v", data.ID)
 		}
 		for key, value := range vectorHash {
+			hashValues[key] = value
+		}
+	}
+
+	if data.SparseEmbeddings != nil {
+		sparseEmbeddingHash, err := createSparseEmbeddingHash(data)
+		if err != nil {
+			return fmt.Errorf("fail to create sparseEmbeddingHash: %v", data.ID)
+		}
+		for key, value := range sparseEmbeddingHash {
 			hashValues[key] = value
 		}
 	}
@@ -154,4 +189,30 @@ func queueDelete(ctx context.Context, pipe redis.Pipeliner, collection string, i
 	}
 
 	return nil
+}
+
+func CosineSimilarity(a, b []float32) (float32, error) {
+	if len(a) != len(b) {
+		return 0, errors.New("vectors must have the same dimension")
+	}
+
+	if len(a) == 0 {
+		return 0, errors.New("vectors must not be empty")
+	}
+
+	var dotProduct float32
+	var normA float32
+	var normB float32
+
+	for i := range a {
+		dotProduct += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0, errors.New("cosine similarity is undefined for zero vectors")
+	}
+
+	return dotProduct / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB)))), nil
 }

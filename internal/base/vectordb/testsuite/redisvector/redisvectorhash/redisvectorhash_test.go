@@ -2,11 +2,11 @@ package redisvector
 
 import (
 	"aiml-infrastructure/internal/base/vectordb/backend/redisvector/redisvectorhash"
-	"fmt"
 	"os"
 	"strconv"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -84,14 +84,17 @@ func (v *VectorDBTestSuite) Test002ManageSingleData() {
 	assert.NoError(v.T(), err)
 
 	// create mock test data
-	dataInsert := generateTestData("test-data-001")
+	dataKey := uuid.New().String()
+	dataInsert := generateTestData(dataKey)
 
 	// validate mock test data
 	err = dataInsert.ValidateIdentifier()
 	assert.NoError(v.T(), err)
 	err = dataInsert.ValidateContent()
 	assert.NoError(v.T(), err)
-	err = dataInsert.ValidateEmbedding()
+	err = dataInsert.ValidateDenseEmbeddings()
+	assert.NoError(v.T(), err)
+	err = dataInsert.ValidateSparseEmbeddings()
 	assert.NoError(v.T(), err)
 	err = dataInsert.ValidateMetadata()
 	assert.NoError(v.T(), err)
@@ -105,17 +108,25 @@ func (v *VectorDBTestSuite) Test002ManageSingleData() {
 	assert.NoError(v.T(), err)
 	assert.Equal(v.T(), 1, count)
 
-	dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, "test-data-001")
+	dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, dataKey)
 	assert.NoError(v.T(), err)
 	assert.Equal(v.T(), dataInsert.ID, dataGet.ID)
 	assert.Equal(v.T(), dataInsert.DocumentID, dataGet.DocumentID)
 	assert.Equal(v.T(), dataInsert.ChunkID, dataGet.ChunkID)
 	assert.Equal(v.T(), dataInsert.Content, dataGet.Content)
-	assert.Equal(v.T(), dataInsert.Embedding, dataGet.Embedding)
+	assert.Equal(v.T(), dataInsert.SparseEmbeddings, dataGet.SparseEmbeddings)
+
+	for key, vector := range dataInsert.DenseEmbeddings {
+		cosineSimilarityScore, err := redisvectorhash.CosineSimilarity(
+			vector.Values,
+			dataGet.DenseEmbeddings[key].Values)
+		assert.NoError(v.T(), err)
+		assert.LessOrEqual(v.T(), float32(0.00001), cosineSimilarityScore)
+	}
 	//assert.Equal(v.T(), dataInsert.Metadata, dataGet.Metadata)
 
 	// test delete stored data
-	err = v.VectorDBConnector.Delete(v.T().Context(), v.TestCollection.Name, "test-data-001")
+	err = v.VectorDBConnector.Delete(v.T().Context(), v.TestCollection.Name, dataKey)
 	assert.NoError(v.T(), err)
 
 	// check if collection is already empty
@@ -136,8 +147,10 @@ func (v *VectorDBTestSuite) Test003ManageBatchdata() {
 	assert.NoError(v.T(), err)
 
 	// create bulk mock test data
-	dataInsert := generateBulkTestData(1000, "test-data")
-	dataInsertID := generateBulkTestDataID(500, "test-data")
+	batchNumber := 10
+	dataInsertID := generateBulkTestDataID(100)
+	dataInsertID500 := dataInsertID[:50]
+	dataInsert := generateBulkTestData(dataInsertID)
 
 	// validate all mock test data
 	for _, data := range dataInsert {
@@ -145,41 +158,52 @@ func (v *VectorDBTestSuite) Test003ManageBatchdata() {
 		assert.NoError(v.T(), err)
 		err = data.ValidateContent()
 		assert.NoError(v.T(), err)
-		err = data.ValidateEmbedding()
+		err = data.ValidateDenseEmbeddings()
+		assert.NoError(v.T(), err)
+		err = data.ValidateSparseEmbeddings()
 		assert.NoError(v.T(), err)
 		err = data.ValidateMetadata()
 		assert.NoError(v.T(), err)
 	}
 
 	// insert test data into vector db
-	err = v.VectorDBConnector.UpsertBatch(v.T().Context(), v.TestCollection.Name, dataInsert, 100)
+	err = v.VectorDBConnector.UpsertBatch(v.T().Context(), v.TestCollection.Name, dataInsert, batchNumber)
 	assert.NoError(v.T(), err)
 
 	// check if test data is inside vector db
 	count, err := v.VectorDBConnector.CountVector(v.T().Context(), v.TestCollection.Name)
 	assert.NoError(v.T(), err)
-	assert.Equal(v.T(), 1000, count)
+	assert.Equal(v.T(), len(dataInsertID), count)
 
 	// check if all stored test data comply with input data
-	for index, data := range dataInsert {
-		dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, fmt.Sprintf("%s-%d", "test-data", index))
+	for _, data := range dataInsert {
+		dataGet, err := v.VectorDBConnector.GetByID(v.T().Context(), v.TestCollection.Name, data.ID)
 		assert.NoError(v.T(), err)
 		assert.Equal(v.T(), data.ID, dataGet.ID)
 		assert.Equal(v.T(), data.DocumentID, dataGet.DocumentID)
 		assert.Equal(v.T(), data.ChunkID, dataGet.ChunkID)
 		assert.Equal(v.T(), data.Content, dataGet.Content)
-		assert.Equal(v.T(), data.Embedding, dataGet.Embedding)
+		assert.Equal(v.T(), data.SparseEmbeddings, dataGet.SparseEmbeddings)
+
+		for key, vector := range data.DenseEmbeddings {
+			cosineSimilarityScore, err := redisvectorhash.CosineSimilarity(
+				vector.Values,
+				dataGet.DenseEmbeddings[key].Values)
+			assert.NoError(v.T(), err)
+			assert.LessOrEqual(v.T(), float32(0.00001), cosineSimilarityScore)
+		}
+
 		//assert.Equal(v.T(), data.Metadata, dataGet.Metadata)
 	}
 
 	// delete all key in batch
-	err = v.VectorDBConnector.DeleteBatch(v.T().Context(), v.TestCollection.Name, dataInsertID, 100)
+	err = v.VectorDBConnector.DeleteBatch(v.T().Context(), v.TestCollection.Name, dataInsertID500, batchNumber)
 	assert.NoError(v.T(), err)
 
 	// check collection after delete half number of keys
 	count, err = v.VectorDBConnector.CountVector(v.T().Context(), v.TestCollection.Name)
 	assert.NoError(v.T(), err)
-	assert.Equal(v.T(), 500, count)
+	assert.Equal(v.T(), len(dataInsertID)-len(dataInsertID500), count)
 
 	// test delete all stored data
 	err = v.VectorDBConnector.FlushCollection(v.T().Context(), v.TestCollection.Name)

@@ -269,17 +269,36 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 			fmt.Sprintf("data not found: %v", id))
 	}
 
-	var vectorFloat32 []float32
-	if vectorBytes, ok := fields[vectordb.EmbeddingColumnName]; ok {
-		vectorFloat32, err = convertEmbeddingBytetoEmbeddingFloat32([]byte(vectorBytes))
-		if err != nil {
-			return vectordb.Data{}, v.error(err,
-				"GetByID-004",
-				fmt.Sprintf("fail to decode vector: %v", id))
+	denseEmbeddings := make(map[string]vectordb.DenseEmbedding)
+	sparseEmbeddings := make(map[string]vectordb.SparseEmbedding)
+
+	for hashKey, hashValue := range fields {
+		if strings.Contains(hashKey, vectordb.DenseEmbeddingColumnName) {
+			vectorFloat32, err := convertEmbeddingBytetoEmbeddingFloat32([]byte(hashValue))
+			if err != nil {
+				return vectordb.Data{}, v.error(err,
+					"GetByID-004",
+					fmt.Sprintf("fail to decode vector: %v", id))
+			}
+			denseEmbeddings[strings.TrimPrefix(hashKey,
+				fmt.Sprintf("%s_", vectordb.DenseEmbeddingColumnName))] = vectordb.DenseEmbedding{
+				Values: vectorFloat32,
+			}
+		}
+
+		if strings.Contains(hashKey, vectordb.SparseEmbeddingColumnName) {
+			var sparseEmbedding vectordb.SparseEmbedding
+			if err := json.Unmarshal([]byte(fields[hashKey]), &sparseEmbedding); err != nil {
+				return vectordb.Data{}, v.error(err,
+					"GetBYID-004",
+					fmt.Sprintf("fail to unmarshall sparseEmbedding metadata: %v", id))
+			}
+			sparseEmbeddings[strings.TrimPrefix(hashKey,
+				fmt.Sprintf("%s_", vectordb.SparseEmbeddingColumnName))] = sparseEmbedding
 		}
 	}
 
-	var metadataMap map[string]interface{}
+	metadataMap := make(map[string]interface{})
 	if metadata, ok := fields[vectordb.MetadataColumnName]; ok {
 		if err := json.Unmarshal([]byte(metadata), &metadataMap); err != nil {
 			return vectordb.Data{}, v.error(err,
@@ -289,12 +308,13 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 	}
 
 	return vectordb.Data{
-		ID:         fields[vectordb.IDColumnName],
-		DocumentID: fields[vectordb.DocumentIDColumnName],
-		ChunkID:    fields[vectordb.ChunkIDColumnName],
-		Content:    fields[vectordb.ContentColumnName],
-		Embedding:  vectorFloat32,
-		Metadata:   metadataMap,
+		ID:               fields[vectordb.IDColumnName],
+		DocumentID:       fields[vectordb.DocumentIDColumnName],
+		ChunkID:          fields[vectordb.ChunkIDColumnName],
+		Content:          fields[vectordb.ContentColumnName],
+		DenseEmbeddings:  denseEmbeddings,
+		SparseEmbeddings: sparseEmbeddings,
+		Metadata:         metadataMap,
 	}, nil
 }
 

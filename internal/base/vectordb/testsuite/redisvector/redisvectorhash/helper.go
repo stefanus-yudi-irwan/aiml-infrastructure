@@ -17,7 +17,39 @@ var (
 func createTestCollectionConfig(collection string) redisvectorhash.CollectionConfig {
 	collectionConfig := redisvectorhash.CollectionConfig{
 		Name: collection,
-		Fields: []redisvectorhash.FieldConfig{
+		EmbeddingFields: []*redisvectorhash.EmbeddingFieldConfig{
+			{
+				Name: fmt.Sprintf("%s_%s",
+					vectordb.DenseEmbeddingColumnName,
+					vectordb.DenseEmbedding1Name),
+				DataType:   redisvectorhash.VECTOR_FLOAT32,
+				Dimension:  TEST_VECTOR_DIMENSION,
+				Distance:   redisvectorhash.COSINE,
+				Index:      redisvectorhash.HNSW,
+				InitialCap: 1000,
+				HNSW: &redisvectorhash.HNSWConfig{
+					M:              redisvectorhash.HNSW_M_SMALL,
+					EFConstruction: redisvectorhash.HNSW_EF_CONSTRUCTION_SMALL,
+					EFRuntime:      redisvectorhash.HNSW_EF_RUNTIME_SMALL,
+				},
+			},
+			{
+				Name: fmt.Sprintf("%s_%s",
+					vectordb.DenseEmbeddingColumnName,
+					vectordb.DenseEmbedding2Name),
+				DataType:   redisvectorhash.VECTOR_FLOAT32,
+				Dimension:  TEST_VECTOR_DIMENSION,
+				Distance:   redisvectorhash.COSINE,
+				Index:      redisvectorhash.HNSW,
+				InitialCap: 1000,
+				HNSW: &redisvectorhash.HNSWConfig{
+					M:              redisvectorhash.HNSW_M_SMALL,
+					EFConstruction: redisvectorhash.HNSW_EF_CONSTRUCTION_SMALL,
+					EFRuntime:      redisvectorhash.HNSW_EF_RUNTIME_SMALL,
+				},
+			},
+		},
+		DataFields: []*redisvectorhash.DataFieldConfig{
 			{
 				Type: redisvectorhash.FieldTypeText,
 				TextField: &redisvectorhash.TextFieldConfig{
@@ -43,19 +75,19 @@ func createTestCollectionConfig(collection string) redisvectorhash.CollectionCon
 				},
 			},
 			{
-				Type: redisvectorhash.FieldTypeVector,
-				VectorField: &redisvectorhash.VectorFieldConfig{
-					Name:       vectordb.EmbeddingColumnName,
-					Dimension:  TEST_VECTOR_DIMENSION,
-					Algorithm:  redisvectorhash.HNSW,
-					Metric:     redisvectorhash.COSINE,
-					Type:       redisvectorhash.VECTOR_FLOAT32,
-					InitialCap: 1000,
-					HNSW: &redisvectorhash.HNSWConfig{
-						M:              redisvectorhash.M_SMALL,
-						EFConstruction: redisvectorhash.EF_CONSTRUCTION_SMALL,
-						EFRuntime:      redisvectorhash.EF_RUNTIME_SMALL,
-					},
+				Type: redisvectorhash.FieldTypeText,
+				TextField: &redisvectorhash.TextFieldConfig{
+					Name: fmt.Sprintf("%s_%s",
+						vectordb.SparseEmbeddingColumnName,
+						vectordb.SparseEmbedding1Name),
+				},
+			},
+			{
+				Type: redisvectorhash.FieldTypeText,
+				TextField: &redisvectorhash.TextFieldConfig{
+					Name: fmt.Sprintf("%s_%s",
+						vectordb.SparseEmbeddingColumnName,
+						vectordb.SparseEmbedding2Name),
 				},
 			},
 			{
@@ -99,12 +131,32 @@ func createTestCollectionConfig(collection string) redisvectorhash.CollectionCon
 }
 
 func generateTestData(id string) vectordb.Data {
+
+	denseEmbeddings := make(map[string]vectordb.DenseEmbedding)
+	sparseEmbeddings := make(map[string]vectordb.SparseEmbedding)
+
+	denseEmbeddings[vectordb.DenseEmbedding1Name] = vectordb.DenseEmbedding{
+		Values: generateRandomVector(TEST_VECTOR_DIMENSION),
+	}
+	denseEmbeddings[vectordb.DenseEmbedding2Name] = vectordb.DenseEmbedding{
+		Values: generateRandomVector(TEST_VECTOR_DIMENSION),
+	}
+	sparseEmbeddings[vectordb.SparseEmbedding1Name] = vectordb.SparseEmbedding{
+		Indices: generateRandomIndices(TEST_VECTOR_DIMENSION),
+		Values:  generateRandomVector(TEST_VECTOR_DIMENSION),
+	}
+	sparseEmbeddings[vectordb.SparseEmbedding2Name] = vectordb.SparseEmbedding{
+		Indices: generateRandomIndices(TEST_VECTOR_DIMENSION),
+		Values:  generateRandomVector(TEST_VECTOR_DIMENSION),
+	}
+
 	return vectordb.Data{
-		ID:         id,
-		DocumentID: uuid.New().String(),
-		ChunkID:    uuid.New().String(),
-		Content:    generateRandomString(TEST_CONTENT_LENGTH),
-		Embedding:  generateRandomVector(TEST_VECTOR_DIMENSION),
+		ID:               id,
+		DocumentID:       uuid.New().String(),
+		ChunkID:          uuid.New().String(),
+		Content:          generateRandomString(TEST_CONTENT_LENGTH),
+		DenseEmbeddings:  denseEmbeddings,
+		SparseEmbeddings: sparseEmbeddings,
 		Metadata: map[string]interface{}{
 			"person":       []string{"personA", "personB", "personC"},
 			"place":        []string{"placeA", "placeB", "placeC"},
@@ -118,24 +170,22 @@ func generateTestData(id string) vectordb.Data {
 	}
 }
 
-func generateBulkTestData(dataCount int, prefixID string) []vectordb.Data {
+func generateBulkTestData(dataID []string) []vectordb.Data {
 
-	bulkData := make([]vectordb.Data, dataCount)
+	bulkData := make([]vectordb.Data, len(dataID))
 
-	for index := 0; index < dataCount; index++ {
-		bulkData[index] = generateTestData(
-			fmt.Sprintf("%s-%d", prefixID, index),
-		)
+	for index, id := range dataID {
+		bulkData[index] = generateTestData(id)
 	}
 
 	return bulkData
 }
 
-func generateBulkTestDataID(dataCount int, prefixID string) []string {
+func generateBulkTestDataID(dataCount int) []string {
 	bulkDataID := make([]string, dataCount)
 
 	for index := 0; index < dataCount; index++ {
-		bulkDataID[index] = fmt.Sprintf("%s-%d", prefixID, index)
+		bulkDataID[index] = uuid.New().String()
 	}
 
 	return bulkDataID
@@ -149,6 +199,16 @@ func generateRandomVector(dim int) []float32 {
 	}
 
 	return vector
+}
+
+func generateRandomIndices(dim int) []uint32 {
+	indices := make([]uint32, dim)
+
+	for i := range indices {
+		indices[i] = rand.Uint32()
+	}
+
+	return indices
 }
 
 func generateRandomString(length int) string {
