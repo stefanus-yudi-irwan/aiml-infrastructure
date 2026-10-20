@@ -66,7 +66,7 @@ func createDenseEmbeddingHash(data vectordb.Data) (map[string]interface{}, error
 
 	for embeddingName, embedding := range data.DenseEmbeddings {
 		embeddingByte, err := convertEmbeddingFloat32toEmbeddingByte(
-			embedding.Values,
+			embedding,
 		)
 		if err != nil {
 			return nil, err

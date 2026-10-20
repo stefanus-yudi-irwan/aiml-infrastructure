@@ -269,8 +269,8 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 			fmt.Sprintf("data not found: %v", id))
 	}
 
-	denseEmbeddings := make(map[string]vectordb.DenseEmbedding)
-	sparseEmbeddings := make(map[string]vectordb.SparseEmbedding)
+	denseEmbeddings := make(map[vectordb.DenseEmbeddingName][]float32)
+	sparseEmbeddings := make(map[vectordb.SparseEmbeddingName]vectordb.SparseEmbedding)
 
 	for hashKey, hashValue := range fields {
 		if strings.Contains(hashKey, vectordb.DenseEmbeddingColumnName) {
@@ -280,10 +280,9 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 					"GetByID-004",
 					fmt.Sprintf("fail to decode vector: %v", id))
 			}
-			denseEmbeddings[strings.TrimPrefix(hashKey,
-				fmt.Sprintf("%s_", vectordb.DenseEmbeddingColumnName))] = vectordb.DenseEmbedding{
-				Values: vectorFloat32,
-			}
+			denseEmbeddings[vectordb.DenseEmbeddingName(
+				strings.TrimPrefix(hashKey,
+					fmt.Sprintf("%s_", vectordb.DenseEmbeddingColumnName)))] = vectorFloat32
 		}
 
 		if strings.Contains(hashKey, vectordb.SparseEmbeddingColumnName) {
@@ -293,8 +292,9 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 					"GetBYID-004",
 					fmt.Sprintf("fail to unmarshall sparseEmbedding metadata: %v", id))
 			}
-			sparseEmbeddings[strings.TrimPrefix(hashKey,
-				fmt.Sprintf("%s_", vectordb.SparseEmbeddingColumnName))] = sparseEmbedding
+			sparseEmbeddings[vectordb.SparseEmbeddingName(
+				strings.TrimPrefix(hashKey,
+					fmt.Sprintf("%s_", vectordb.SparseEmbeddingColumnName)))] = sparseEmbedding
 		}
 	}
 
@@ -307,7 +307,7 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 		}
 	}
 
-	return vectordb.Data{
+	data := vectordb.Data{
 		ID:               fields[vectordb.IDColumnName],
 		DocumentID:       fields[vectordb.DocumentIDColumnName],
 		ChunkID:          fields[vectordb.ChunkIDColumnName],
@@ -315,7 +315,15 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 		DenseEmbeddings:  denseEmbeddings,
 		SparseEmbeddings: sparseEmbeddings,
 		Metadata:         metadataMap,
-	}, nil
+	}
+
+	if err := data.Validate(); err != nil {
+		return vectordb.Data{}, v.error(err,
+			"GetByID-006",
+			fmt.Sprintf("retrieved data validation error: %v", data.ID))
+	}
+
+	return data, nil
 }
 
 func (v *VectorDBConnector) CountVector(ctx context.Context, collection string) (int, error) {

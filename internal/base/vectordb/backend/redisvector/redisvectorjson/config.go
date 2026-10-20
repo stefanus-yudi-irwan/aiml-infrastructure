@@ -7,11 +7,10 @@ import (
 )
 
 type VectorDBConnectorConfig struct {
-	Address     string
-	Username    string
-	Password    string
-	Db          int
-	Collections []CollectionConfig
+	Address  string
+	Username string
+	Password string
+	Db       int
 }
 
 func (v *VectorDBConnectorConfig) Validate() error {
@@ -24,27 +23,27 @@ func (v *VectorDBConnectorConfig) Validate() error {
 	return nil
 }
 
-type IndexAlgorithm string
+type IndexType string
 
 const (
-	HNSW IndexAlgorithm = "HNSW"
-	FLAT IndexAlgorithm = "FLAT"
+	HNSW IndexType = "HNSW"
+	FLAT IndexType = "FLAT"
 )
 
-var RegisteredIndexAlgorithm = map[IndexAlgorithm]struct{}{
+var RegisteredIndexType = map[IndexType]struct{}{
 	HNSW: {},
 	FLAT: {},
 }
 
-type DistanceMetric string
+type DistanceType string
 
 const (
-	COSINE DistanceMetric = "COSINE"
-	L2     DistanceMetric = "L2"
-	IP     DistanceMetric = "IP"
+	COSINE DistanceType = "COSINE"
+	L2     DistanceType = "L2"
+	IP     DistanceType = "IP"
 )
 
-var RegisteredDistanceMetric = map[DistanceMetric]struct{}{
+var RegisteredDistanceType = map[DistanceType]struct{}{
 	COSINE: {},
 	L2:     {},
 	IP:     {},
@@ -63,24 +62,24 @@ var RegisteredVectorType = map[VectorType]struct{}{
 }
 
 const (
-	M_SMALL  = 16
-	M_MEDIUM = 24
-	M_LARGE  = 32
-	M_JUMBO  = 40
+	HNSW_M_SMALL  = 16
+	HNSW_M_MEDIUM = 24
+	HNSW_M_LARGE  = 32
+	HNSW_M_JUMBO  = 40
 )
 
 const (
-	EF_CONSTRUCTION_SMALL  = 100
-	EF_CONSTRUCTION_MEDIUM = 200
-	EF_CONSTRUCTION_LARGE  = 300
-	EF_CONSTRUCTION_JUMBO  = 400
+	HNSW_EF_CONSTRUCTION_SMALL  = 100
+	HNSW_EF_CONSTRUCTION_MEDIUM = 200
+	HNSW_EF_CONSTRUCTION_LARGE  = 300
+	HNSW_EF_CONSTRUCTION_JUMBO  = 400
 )
 
 const (
-	EF_RUNTIME_SMALL  = 10
-	EF_RUNTIME_MEDIUM = 20
-	EF_RUNTIME_LARGE  = 50
-	EF_RUNTIME_JUMBO  = 100
+	HNSW_EF_RUNTIME_SMALL  = 10
+	HNSW_EF_RUNTIME_MEDIUM = 20
+	HNSW_EF_RUNTIME_LARGE  = 50
+	HNSW_EF_RUNTIME_JUMBO  = 100
 )
 
 type FieldType string
@@ -94,8 +93,9 @@ const (
 )
 
 type CollectionConfig struct {
-	Name   string
-	Fields []FieldConfig
+	Name            string
+	EmbeddingFields []*EmbeddingFieldConfig
+	DataFields      []*DataFieldConfig
 }
 
 func (c *CollectionConfig) Validate() error {
@@ -104,17 +104,23 @@ func (c *CollectionConfig) Validate() error {
 		return errors.New("collection name cannot be empty")
 	}
 
-	if len(c.Fields) == 0 {
+	if c.EmbeddingFields == nil {
+		return errors.New("embedding field need to have configuration")
+	}
+
+	for _, embeddingField := range c.EmbeddingFields {
+		if err := embeddingField.Validate(); err != nil {
+			return err
+		}
+	}
+
+	if len(c.DataFields) == 0 {
 		return errors.New("collection fields cannot be empty")
 	}
 
-	if c.Fields != nil {
-		for _, field := range c.Fields {
+	if c.DataFields != nil {
+		for _, field := range c.DataFields {
 			switch field.Type {
-			case FieldTypeVector:
-				if err := field.VectorField.Validate(); err != nil {
-					return err
-				}
 			case FieldTypeTag:
 				if err := field.TagField.Validate(); err != nil {
 					return err
@@ -145,10 +151,12 @@ func (c CollectionConfig) CreateCollectionQuery() []interface{} {
 		"SCHEMA",
 	}
 
-	for _, field := range c.Fields {
+	for _, field := range c.EmbeddingFields {
+		collectionQuery = append(collectionQuery, field.CreateVectorFieldQuery()...)
+	}
+
+	for _, field := range c.DataFields {
 		switch field.Type {
-		case FieldTypeVector:
-			collectionQuery = append(collectionQuery, field.VectorField.CreateVectorFieldQuery()...)
 		case FieldTypeTag:
 			collectionQuery = append(collectionQuery, field.TagField.CreateTagFieldQuery()...)
 		case FieldTypeText:
@@ -163,23 +171,73 @@ func (c CollectionConfig) CreateCollectionQuery() []interface{} {
 	return collectionQuery
 }
 
-type FieldConfig struct {
-	Type         FieldType
-	VectorField  *VectorFieldConfig
-	TagField     *TagFieldConfig
-	TextField    *TextFieldConfig
-	NumericField *NumericFieldConfig
-	GeoField     *GeoFieldConfig
-}
-
-type VectorFieldConfig struct {
+type EmbeddingFieldConfig struct {
 	Name       string
+	DataType   VectorType
 	Dimension  int
-	Algorithm  IndexAlgorithm
-	Metric     DistanceMetric
-	Type       VectorType
+	Distance   DistanceType
+	Index      IndexType
 	InitialCap int
 	HNSW       *HNSWConfig
+}
+
+func (v *EmbeddingFieldConfig) Validate() error {
+	if v.Dimension < 0 {
+		return errors.New("dimension cannot be less than 0")
+	}
+
+	if _, isExists := RegisteredIndexType[v.Index]; !isExists {
+		return fmt.Errorf("unsuported Algorithm: %s", v.Index)
+	}
+
+	if _, isExists := RegisteredDistanceType[v.Distance]; !isExists {
+		return fmt.Errorf("unsuported Metric: %s", v.Distance)
+	}
+
+	if _, isExists := RegisteredVectorType[v.DataType]; !isExists {
+		return fmt.Errorf("unsuported vector type: %s", v.DataType)
+	}
+
+	if v.Index == HNSW {
+		if err := v.HNSW.Validate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (v *EmbeddingFieldConfig) CreateVectorFieldQuery() []interface{} {
+	var vectorFieldQuery []interface{}
+
+	vectorFieldQuery = append(vectorFieldQuery,
+		"$."+v.Name, "AS", v.Name,
+		string(FieldTypeVector),
+		string(v.Index),
+	)
+
+	switch v.Index {
+	case HNSW:
+		vectorFieldQuery = append(vectorFieldQuery, 12)
+	case FLAT:
+		vectorFieldQuery = append(vectorFieldQuery, 8)
+	}
+
+	vectorFieldQuery = append(vectorFieldQuery,
+		"TYPE", string(v.DataType),
+		"DIM", v.Dimension,
+		"DISTANCE_METRIC", string(v.Distance),
+		"INITIAL_CAP", v.InitialCap,
+	)
+
+	if v.Index == HNSW {
+		vectorFieldQuery = append(vectorFieldQuery,
+			"M", v.HNSW.M,
+			"EF_CONSTRUCTION", v.HNSW.EFConstruction,
+		)
+	}
+
+	return vectorFieldQuery
 }
 
 type HNSWConfig struct {
@@ -188,75 +246,42 @@ type HNSWConfig struct {
 	EFRuntime      int
 }
 
-func (v *VectorFieldConfig) Validate() error {
-	if v.Dimension < 0 {
-		return errors.New("Dimension cannot be less than 0")
-	}
+func (c *HNSWConfig) Validate() error {
 
-	if _, isExists := RegisteredIndexAlgorithm[v.Algorithm]; !isExists {
-		return fmt.Errorf("unsuported Algorithm: %s", v.Algorithm)
-	}
-
-	if _, isExists := RegisteredDistanceMetric[v.Metric]; !isExists {
-		return fmt.Errorf("unsuported Metric: %s", v.Metric)
-	}
-
-	if _, isExists := RegisteredVectorType[v.Type]; !isExists {
-		return fmt.Errorf("unsuported vector type: %s", v.Type)
-	}
-
-	if v.Algorithm == HNSW && v.HNSW == nil {
+	if c == nil {
 		return errors.New("HNSW config is empty when attempting to create HNSW index")
 	}
 
-	if v.HNSW != nil {
-		if v.HNSW.M < M_SMALL || v.HNSW.M > M_JUMBO {
-			return fmt.Errorf("unsuported graph connection value, need to be between %d and %d: %d", M_SMALL, M_JUMBO, v.HNSW.M)
-		}
+	if c.M < HNSW_M_SMALL || c.M > HNSW_M_JUMBO {
+		return fmt.Errorf("unsuported graph connection value, need to be between %d and %d: %d",
+			HNSW_M_SMALL,
+			HNSW_M_JUMBO,
+			c.M)
+	}
 
-		if v.HNSW.EFConstruction < EF_CONSTRUCTION_SMALL || v.HNSW.EFConstruction > EF_CONSTRUCTION_JUMBO {
-			return fmt.Errorf("unsuported candidate size, need to be between %d and %d: %d", EF_CONSTRUCTION_SMALL, EF_CONSTRUCTION_JUMBO, v.HNSW.EFConstruction)
-		}
+	if c.EFConstruction < HNSW_EF_CONSTRUCTION_SMALL || c.EFConstruction > HNSW_EF_CONSTRUCTION_JUMBO {
+		return fmt.Errorf("unsuported candidate size, need to be between %d and %d: %d",
+			HNSW_EF_CONSTRUCTION_SMALL,
+			HNSW_EF_CONSTRUCTION_JUMBO,
+			c.EFConstruction)
+	}
 
-		if v.HNSW.EFRuntime < EF_RUNTIME_SMALL || v.HNSW.EFRuntime > EF_RUNTIME_JUMBO {
-			return fmt.Errorf("unsuported candidate size, need to be between %d and %d: %d", EF_RUNTIME_SMALL, EF_RUNTIME_JUMBO, v.HNSW.EFRuntime)
-		}
+	if c.EFRuntime < HNSW_EF_RUNTIME_SMALL || c.EFRuntime > HNSW_EF_RUNTIME_JUMBO {
+		return fmt.Errorf("unsuported candidate size, need to be between %d and %d: %d",
+			HNSW_EF_RUNTIME_SMALL,
+			HNSW_EF_RUNTIME_JUMBO,
+			c.EFRuntime)
 	}
 
 	return nil
 }
 
-func (v *VectorFieldConfig) CreateVectorFieldQuery() []interface{} {
-	var vectorFieldQuery []interface{}
-
-	vectorFieldQuery = append(vectorFieldQuery,
-		"$."+v.Name, "AS", v.Name,
-		string(FieldTypeVector),
-		string(v.Algorithm),
-	)
-
-	switch v.Algorithm {
-	case HNSW:
-		vectorFieldQuery = append(vectorFieldQuery, 12)
-	case FLAT:
-		vectorFieldQuery = append(vectorFieldQuery, 8)
-	}
-
-	vectorFieldQuery = append(vectorFieldQuery,
-		"TYPE", string(v.Type),
-		"DIM", v.Dimension,
-		"DISTANCE_METRIC", string(v.Metric),
-		"INITIAL_CAP", v.InitialCap,
-	)
-
-	if v.Algorithm == HNSW {
-		vectorFieldQuery = append(vectorFieldQuery,
-			"M", v.HNSW.M,
-			"EF_CONSTRUCTION", v.HNSW.EFConstruction,
-		)
-	}
-
-	return vectorFieldQuery
+type DataFieldConfig struct {
+	Type         FieldType
+	TagField     *TagFieldConfig
+	TextField    *TextFieldConfig
+	NumericField *NumericFieldConfig
+	GeoField     *GeoFieldConfig
 }
 
 type TagFieldConfig struct {

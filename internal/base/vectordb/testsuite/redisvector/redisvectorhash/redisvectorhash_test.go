@@ -88,15 +88,7 @@ func (v *VectorDBTestSuite) Test002ManageSingleData() {
 	dataInsert := generateTestData(dataKey)
 
 	// validate mock test data
-	err = dataInsert.ValidateIdentifier()
-	assert.NoError(v.T(), err)
-	err = dataInsert.ValidateContent()
-	assert.NoError(v.T(), err)
-	err = dataInsert.ValidateDenseEmbeddings()
-	assert.NoError(v.T(), err)
-	err = dataInsert.ValidateSparseEmbeddings()
-	assert.NoError(v.T(), err)
-	err = dataInsert.ValidateMetadata()
+	err = dataInsert.Validate()
 	assert.NoError(v.T(), err)
 
 	// insert test data into vector db
@@ -118,8 +110,8 @@ func (v *VectorDBTestSuite) Test002ManageSingleData() {
 
 	for key, vector := range dataInsert.DenseEmbeddings {
 		cosineSimilarityScore, err := redisvectorhash.CosineSimilarity(
-			vector.Values,
-			dataGet.DenseEmbeddings[key].Values)
+			vector,
+			dataGet.DenseEmbeddings[key])
 		assert.NoError(v.T(), err)
 		assert.LessOrEqual(v.T(), float32(0.00001), cosineSimilarityScore)
 	}
@@ -147,22 +139,14 @@ func (v *VectorDBTestSuite) Test003ManageBatchdata() {
 	assert.NoError(v.T(), err)
 
 	// create bulk mock test data
-	batchNumber := 10
-	dataInsertID := generateBulkTestDataID(100)
-	dataInsertID500 := dataInsertID[:50]
+	batchNumber := 100
+	dataInsertID := generateBulkTestDataID(1000)
+	dataInsertID500 := dataInsertID[:500]
 	dataInsert := generateBulkTestData(dataInsertID)
 
 	// validate all mock test data
 	for _, data := range dataInsert {
-		err = data.ValidateIdentifier()
-		assert.NoError(v.T(), err)
-		err = data.ValidateContent()
-		assert.NoError(v.T(), err)
-		err = data.ValidateDenseEmbeddings()
-		assert.NoError(v.T(), err)
-		err = data.ValidateSparseEmbeddings()
-		assert.NoError(v.T(), err)
-		err = data.ValidateMetadata()
+		err = data.Validate()
 		assert.NoError(v.T(), err)
 	}
 
@@ -187,8 +171,8 @@ func (v *VectorDBTestSuite) Test003ManageBatchdata() {
 
 		for key, vector := range data.DenseEmbeddings {
 			cosineSimilarityScore, err := redisvectorhash.CosineSimilarity(
-				vector.Values,
-				dataGet.DenseEmbeddings[key].Values)
+				vector,
+				dataGet.DenseEmbeddings[key])
 			assert.NoError(v.T(), err)
 			assert.LessOrEqual(v.T(), float32(0.00001), cosineSimilarityScore)
 		}
@@ -217,5 +201,13 @@ func (v *VectorDBTestSuite) Test003ManageBatchdata() {
 	// delete collection inside vector db
 	err = v.VectorDBConnector.DeleteCollection(v.T().Context(), v.TestCollection.Name)
 	assert.NoError(v.T(), err)
+
+}
+
+func (v *VectorDBTestSuite) Test004ManageSinglePartialData() {
+
+}
+
+func (v *VectorDBTestSuite) Test005ManageBatchPartialData() {
 
 }

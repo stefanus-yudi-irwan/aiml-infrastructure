@@ -15,13 +15,31 @@ var (
 	SparseEmbeddingColumnName string = "sparse_embedding"
 	DenseEmbeddingColumnName  string = "dense_embedding"
 	MetadataColumnName        string = "metadata"
-
-	//embeddings data
-	SparseEmbedding1Name string = "sparse_1"
-	SparseEmbedding2Name string = "sparse_2"
-	DenseEmbedding1Name  string = "dense_1"
-	DenseEmbedding2Name  string = "dense_2"
 )
+
+type SparseEmbeddingName string
+
+var (
+	SparseEmbedding1Name SparseEmbeddingName = "sparse_1"
+	SparseEmbedding2Name SparseEmbeddingName = "sparse_2"
+)
+
+var RegisteredSparseEmbedding = map[SparseEmbeddingName]struct{}{
+	SparseEmbedding1Name: {},
+	SparseEmbedding2Name: {},
+}
+
+type DenseEmbeddingName string
+
+var (
+	DenseEmbedding1Name DenseEmbeddingName = "dense_1"
+	DenseEmbedding2Name DenseEmbeddingName = "dense_2"
+)
+
+var RegisteredDenseEmbedding = map[DenseEmbeddingName]struct{}{
+	DenseEmbedding1Name: {},
+	DenseEmbedding2Name: {},
+}
 
 type SparseEmbedding struct {
 	Indices []uint32  `json:"indices"`
@@ -46,25 +64,44 @@ func (d *SparseEmbedding) Validate() error {
 	return nil
 }
 
-type DenseEmbedding struct {
-	Values []float32 `json:"values"`
-}
-
-func (d *DenseEmbedding) Validate() error {
-	if len(d.Values) == 0 {
-		return errors.New("value of dense embedding cannot be empty")
-	}
-	return nil
-}
-
 type Data struct {
-	ID               string                     `json:"id"`
-	DocumentID       string                     `json:"document_id"`
-	ChunkID          string                     `json:"chunk_id"`
-	Content          string                     `json:"content"`
-	SparseEmbeddings map[string]SparseEmbedding `json:"sparse_embeddings,omitempty"`
-	DenseEmbeddings  map[string]DenseEmbedding  `json:"dense_embeddings,omitempty"`
-	Metadata         map[string]interface{}     `json:"metadata,omitempty"`
+	ID               string                                  `json:"id"`
+	DocumentID       string                                  `json:"document_id"`
+	ChunkID          string                                  `json:"chunk_id"`
+	Content          string                                  `json:"content"`
+	SparseEmbeddings map[SparseEmbeddingName]SparseEmbedding `json:"sparse_embeddings,omitempty"`
+	DenseEmbeddings  map[DenseEmbeddingName][]float32        `json:"dense_embeddings,omitempty"`
+	Metadata         map[string]interface{}                  `json:"metadata,omitempty"`
+}
+
+func (d *Data) Validate() error {
+	if err := d.ValidateIdentifier(); err != nil {
+		return err
+	}
+
+	if err := d.ValidateContent(); err != nil {
+		return err
+	}
+
+	if d.SparseEmbeddings != nil {
+		if err := d.ValidateSparseEmbeddings(); err != nil {
+			return err
+		}
+	}
+
+	if d.DenseEmbeddings != nil {
+		if err := d.ValidateDenseEmbeddings(); err != nil {
+			return err
+		}
+	}
+
+	if d.Metadata != nil {
+		if err := d.ValidateMetadata(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (d *Data) ValidateIdentifier() error {
@@ -95,8 +132,12 @@ func (d *Data) ValidateSparseEmbeddings() error {
 		return errors.New("spare embeddings cannot be empty")
 	}
 
-	for _, value := range d.SparseEmbeddings {
-		if err := value.Validate(); err != nil {
+	for name, embedding := range d.SparseEmbeddings {
+		if _, isExists := RegisteredSparseEmbedding[name]; !isExists {
+			return errors.New("unsuported sparse embedding name")
+		}
+
+		if err := embedding.Validate(); err != nil {
 			return err
 		}
 	}
@@ -108,10 +149,15 @@ func (d *Data) ValidateDenseEmbeddings() error {
 		return errors.New("dense embeddings cannot be empty")
 	}
 
-	for _, value := range d.DenseEmbeddings {
-		if err := value.Validate(); err != nil {
-			return err
+	for name, embedding := range d.DenseEmbeddings {
+		if _, isExists := RegisteredDenseEmbedding[name]; !isExists {
+			return errors.New("unsuported dense embedding name")
 		}
+
+		if len(embedding) == 0 {
+			return errors.New("dense vector length cannot be empty")
+		}
+
 	}
 	return nil
 }

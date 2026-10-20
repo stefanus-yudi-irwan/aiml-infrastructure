@@ -118,6 +118,122 @@ func (v *VectorDBConnector) FlushAll(ctx context.Context) error {
 	return nil
 }
 
+// func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
+
+// 	dataKey, err := createDataKey(collection, data.ID)
+// 	if err != nil {
+// 		return v.error(err, "Upsert-001")
+// 	}
+
+// 	// update all dense embeddings, sparse embeddings, and metadata
+// 	if data.DenseEmbeddings != nil && data.SparseEmbeddings != nil && data.Metadata != nil {
+// 		jsonData, err := json.Marshal(data)
+// 		if err != nil {
+// 			return v.error(err, "Upsert-002", "fail to marshal JSON document", data.ID)
+// 		}
+
+// 		if err := v.client.Do(ctx, "JSON.SET", dataKey, "$", string(jsonData)).Err(); err != nil {
+// 			return v.error(err, "Upsert-003", "fail to insert JSON document", data.ID)
+// 		}
+
+// 		return nil
+// 	}
+
+// 	// if data is incomplete check for existence of the key in the database
+// 	isExists, err := v.IsKeyExists(ctx, collection, data.ID)
+// 	if err != nil {
+// 		return v.error(err,
+// 			"Upsert-002",
+// 			fmt.Sprintf("fail to check key existence: %v", data.ID))
+// 	}
+
+// 	switch {
+// 	case isExists && data.Embedding != nil:
+// 		// update embedding only
+// 		embeddingJSON, err := json.Marshal(data.Embedding)
+// 		if err != nil {
+// 			return v.error(err,
+// 				"Upsert-003",
+// 				fmt.Sprintf("fail to marshal JSON embedding: %v", data.ID))
+// 		}
+
+// 		if err := v.client.Do(ctx,
+// 			"JSON.SET",
+// 			dataKey,
+// 			fmt.Sprintf("$.%s", vectordb.EmbeddingColumnName),
+// 			string(embeddingJSON)).Err(); err != nil {
+// 			return v.error(err,
+// 				"Upsert-004",
+// 				fmt.Sprintf("fail to update JSON embedding: %v", data.ID))
+// 		}
+
+// 	case isExists && data.Metadata != nil:
+// 		// update metadata only
+// 		metadataJSON, err := json.Marshal(data.Metadata)
+// 		if err != nil {
+// 			return v.error(err,
+// 				"Upsert-005",
+// 				fmt.Sprintf("fail to marshal JSON metadata: %v", data.ID))
+// 		}
+
+// 		if err := v.client.Do(ctx,
+// 			"JSON.SET",
+// 			dataKey,
+// 			fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
+// 			string(metadataJSON)).Err(); err != nil {
+// 			return v.error(err,
+// 				"Upsert-006",
+// 				fmt.Sprintf("fail to update JSON metadata: %v", data.ID))
+// 		}
+
+// 	case !isExists && data.Embedding != nil:
+// 		// insert embedding only
+// 		jsonData, err := json.Marshal(data)
+// 		if err != nil {
+// 			return v.error(err,
+// 				"Upsert-007",
+// 				fmt.Sprintf("fail to marshal JSON document: %v", data.ID))
+// 		}
+
+// 		if err := v.client.Do(ctx,
+// 			"JSON.SET",
+// 			dataKey,
+// 			"$",
+// 			string(jsonData),
+// 			"NX").Err(); err != nil {
+// 			return v.error(err,
+// 				"Upsert-008",
+// 				fmt.Sprintf("fail to insert JSON document: %v", data.ID))
+// 		}
+
+// 	case !isExists && data.Metadata != nil:
+// 		// insert metadata only
+// 		jsonData, err := json.Marshal(data)
+// 		if err != nil {
+// 			return v.error(err,
+// 				"Upsert-009",
+// 				fmt.Sprintf("fail to marshal JSON document: %v", data.ID))
+// 		}
+
+// 		if err := v.client.Do(ctx,
+// 			"JSON.SET",
+// 			dataKey,
+// 			"$",
+// 			string(jsonData),
+// 			"NX").Err(); err != nil {
+// 			return v.error(err,
+// 				"Upsert-010",
+// 				fmt.Sprintf("fail to insert JSON document: %v", data.ID))
+// 		}
+// 	default:
+// 		return v.error(errors.New("either embedding or metadata must be provided"),
+// 			"Upsert-011",
+// 			fmt.Sprintf("cannot upsert data point: %v", data.ID))
+// 	}
+
+// 	return nil
+// }
+
 func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
 
 	dataKey, err := createDataKey(collection, data.ID)
@@ -125,110 +241,84 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 		return v.error(err, "Upsert-001")
 	}
 
-	// update both embedding and metadata
-	if data.Embedding != nil && data.Metadata != nil {
-		json, err := json.Marshal(data)
-		if err != nil {
-			return v.error(err, "Upsert-002", "fail to marshal JSON document", data.ID)
-		}
+	hasDense := len(data.DenseEmbeddings) > 0
+	hasSparse := len(data.SparseEmbeddings) > 0
+	hasMetadata := len(data.Metadata) > 0
 
-		if err := v.client.Do(ctx, "JSON.SET", dataKey, "$", string(json)).Err(); err != nil {
-			return v.error(err, "Upsert-003", "fail to insert JSON document", data.ID)
-		}
-
-		return nil
+	if !hasDense && !hasSparse && !hasMetadata {
+		return v.error(errors.New("at least one embedding or metadata must be provided"),
+			"Upsert-002",
+			fmt.Sprintf("cannot upsert data point: %v", data.ID),
+		)
 	}
 
-	// if data is incomplete check for existence of the key in the database
 	isExists, err := v.IsKeyExists(ctx, collection, data.ID)
 	if err != nil {
 		return v.error(err,
-			"Upsert-002",
+			"Upsert-003",
 			fmt.Sprintf("fail to check key existence: %v", data.ID))
 	}
 
-	switch {
-	case isExists && data.Embedding != nil:
-		// update embedding only
-		embeddingJSON, err := json.Marshal(data.Embedding)
+	if !isExists {
+		jsonData, err := json.Marshal(data)
 		if err != nil {
-			return v.error(err,
-				"Upsert-003",
-				fmt.Sprintf("fail to marshal JSON embedding: %v", data.ID))
-		}
-
-		if err := v.client.Do(ctx,
-			"JSON.SET",
-			dataKey,
-			fmt.Sprintf("$.%s", vectordb.EmbeddingColumnName),
-			string(embeddingJSON)).Err(); err != nil {
 			return v.error(err,
 				"Upsert-004",
-				fmt.Sprintf("fail to update JSON embedding: %v", data.ID))
+				fmt.Sprintf("fail to marshal json document: %v", data.ID))
 		}
 
-	case isExists && data.Metadata != nil:
-		// update metadata only
-		metadataJSON, err := json.Marshal(data.Metadata)
-		if err != nil {
+		if err := v.client.Do(ctx, "JSON.SET", dataKey, "$", string(jsonData), "NX").Err(); err != nil {
 			return v.error(err,
-				"Upsert-005",
-				fmt.Sprintf("fail to marshal JSON metadata: %v", data.ID))
-		}
-
-		if err := v.client.Do(ctx,
-			"JSON.SET",
-			dataKey,
-			fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
-			string(metadataJSON)).Err(); err != nil {
-			return v.error(err,
-				"Upsert-006",
-				fmt.Sprintf("fail to update JSON metadata: %v", data.ID))
-		}
-
-	case !isExists && data.Embedding != nil:
-		// insert embedding only
-		jsonData, err := json.Marshal(data)
-		if err != nil {
-			return v.error(err,
-				"Upsert-007",
-				fmt.Sprintf("fail to marshal JSON document: %v", data.ID))
-		}
-
-		if err := v.client.Do(ctx,
-			"JSON.SET",
-			dataKey,
-			"$",
-			string(jsonData),
-			"NX").Err(); err != nil {
-			return v.error(err,
-				"Upsert-008",
+				"Upsert-004",
 				fmt.Sprintf("fail to insert JSON document: %v", data.ID))
 		}
 
-	case !isExists && data.Metadata != nil:
-		// insert metadata only
-		jsonData, err := json.Marshal(data)
-		if err != nil {
-			return v.error(err,
-				"Upsert-009",
-				fmt.Sprintf("fail to marshal JSON document: %v", data.ID))
+		return nil
+	} else {
+		args := []interface{}{
+			"JSON.MSET",
 		}
 
-		if err := v.client.Do(ctx,
-			"JSON.SET",
-			dataKey,
-			"$",
-			string(jsonData),
-			"NX").Err(); err != nil {
-			return v.error(err,
-				"Upsert-010",
-				fmt.Sprintf("fail to insert JSON document: %v", data.ID))
+		if hasDense {
+			fieldJSON, err := json.Marshal(data.DenseEmbeddings)
+			if err != nil {
+				return v.error(err,
+					"Upsert-005",
+					fmt.Sprintf("fail to marshal DenseEmbeddings field: %v", data.ID))
+			}
+
+			args = append(args, dataKey,
+				fmt.Sprintf("$.%s", vectordb.DenseEmbeddingColumnName),
+				string(fieldJSON))
 		}
-	default:
-		return v.error(errors.New("either embedding or metadata must be provided"),
-			"Upsert-011",
-			fmt.Sprintf("cannot upsert data point: %v", data.ID))
+
+		if hasSparse {
+			fieldJSON, err := json.Marshal(data.SparseEmbeddings)
+			if err != nil {
+				return v.error(err,
+					"Upsert-006",
+					fmt.Sprintf("fail to marshal SparseEmbeddings field: %v", data.ID))
+			}
+
+			args = append(args, dataKey,
+				fmt.Sprintf("$.%s", vectordb.SparseEmbeddingColumnName),
+				string(fieldJSON))
+		}
+
+		if hasMetadata {
+			fieldJSON, err := json.Marshal(data.Metadata)
+			if err != nil {
+				return err
+			}
+
+			args = append(args, dataKey,
+				fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
+				string(fieldJSON))
+		}
+
+		if err := v.client.Do(ctx, args...).Err(); err != nil {
+			return v.error(err, "Upsert-006", "fail to update JSON fields", data.ID)
+		}
 	}
 
 	return nil
@@ -272,118 +362,101 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 
 		pipe := v.client.Pipeline()
 
-		dataMap := make(map[string]vectordb.Data, len(arrayData[start:end]))
+		dataMap := make(map[string]struct {
+			vectorData  vectordb.Data
+			hasDense    bool
+			hasSparse   bool
+			hasMetadata bool
+		}, len(arrayData[start:end]))
 		dataKeys := make([]string, len(arrayData[start:end]))
 		for index, data := range arrayData[start:end] {
 			dataKey, err := createDataKey(collection, data.ID)
 			if err != nil {
 				return v.error(err,
-					"UpsertBatch-001",
+					"UpsertBatch-002",
 					fmt.Sprintf("fail to create dataKey: %v", data.ID))
 			}
-			dataMap[dataKey] = data
+			dataMap[dataKey] = struct {
+				vectorData  vectordb.Data
+				hasDense    bool
+				hasSparse   bool
+				hasMetadata bool
+			}{
+				vectorData:  data,
+				hasDense:    len(data.DenseEmbeddings) > 0,
+				hasSparse:   len(data.SparseEmbeddings) > 0,
+				hasMetadata: len(data.Metadata) > 0,
+			}
 			dataKeys[index] = dataKey
 		}
 
 		existenceMap, err := v.IsKeyExistsBatch(ctx, collection, dataKeys)
 		if err != nil {
 			return v.error(err,
-				"UpsertBatch-002",
+				"UpsertBatch-003",
 				"fail to check key existence")
 		}
 
 		for dataKey, isExists := range existenceMap {
-			switch {
-			case dataMap[dataKey].Embedding != nil && dataMap[dataKey].Metadata != nil:
-				jsonData, err := json.Marshal(dataMap[dataKey])
+			if !isExists {
+				jsonData, err := json.Marshal(dataMap[dataKey].vectorData)
 				if err != nil {
-					return v.error(err,
-						"UpsertBatch-003",
-						fmt.Sprintf("fail to marshal JSON document: %v", dataMap[dataKey].ID))
-				}
-
-				if err := pipe.Do(ctx,
-					"JSON.SET",
-					dataKey,
-					"$",
-					string(jsonData)).Err(); err != nil {
 					return v.error(err,
 						"UpsertBatch-004",
-						fmt.Sprintf("fail to insert JSON document: %v", dataMap[dataKey].ID))
+						fmt.Sprintf("fail to marshal json document: %v", dataKey))
 				}
 
-			case isExists && dataMap[dataKey].Embedding != nil:
-				embeddingJSON, err := json.Marshal(dataMap[dataKey].Embedding)
-				if err != nil {
+				if err := pipe.Do(ctx, "JSON.SET", dataKey, "$", string(jsonData), "NX").Err(); err != nil {
 					return v.error(err,
 						"UpsertBatch-005",
-						fmt.Sprintf("fail to marshal JSON embedding: %v", dataMap[dataKey].ID))
+						fmt.Sprintf("fail to insert JSON document: %v", dataKey))
+				}
+			} else {
+				args := []interface{}{
+					"JSON.MSET",
 				}
 
-				if err := pipe.Do(ctx,
-					"JSON.SET",
-					dataKey,
-					fmt.Sprintf("$.%s", vectordb.EmbeddingColumnName),
-					string(embeddingJSON)).Err(); err != nil {
-					return v.error(err,
-						"UpsertBatch-006",
-						fmt.Sprintf("fail to update JSON embedding: %v", dataMap[dataKey].ID))
+				if dataMap[dataKey].hasDense {
+					fieldJSON, err := json.Marshal(dataMap[dataKey].vectorData.DenseEmbeddings)
+					if err != nil {
+						return v.error(err,
+							"UpsertBatch-006",
+							fmt.Sprintf("fail to marshal DenseEmbeddings field: %v", dataKey))
+					}
+
+					args = append(args, dataKey,
+						fmt.Sprintf("$.%s", vectordb.DenseEmbeddingColumnName),
+						string(fieldJSON))
 				}
 
-			case isExists && dataMap[dataKey].Metadata != nil:
-				metadataJSON, err := json.Marshal(dataMap[dataKey].Metadata)
-				if err != nil {
-					return v.error(err,
-						"UpsertBatch-007",
-						fmt.Sprintf("fail to marshal JSON metadata: %v", dataMap[dataKey].ID))
+				if dataMap[dataKey].hasSparse {
+					fieldJSON, err := json.Marshal(dataMap[dataKey].vectorData.SparseEmbeddings)
+					if err != nil {
+						return v.error(err,
+							"UpsertBatch-007",
+							fmt.Sprintf("fail to marshal SparseEmbeddings field: %v", dataKey))
+					}
+
+					args = append(args, dataKey,
+						fmt.Sprintf("$.%s", vectordb.SparseEmbeddingColumnName),
+						string(fieldJSON))
 				}
 
-				if err := pipe.Do(ctx,
-					"JSON.SET",
-					dataKey,
-					fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
-					string(metadataJSON)).Err(); err != nil {
-					return v.error(err,
-						"UpsertBatch-008",
-						fmt.Sprintf("fail to update JSON metadata: %v", dataMap[dataKey].ID))
+				if dataMap[dataKey].hasMetadata {
+					fieldJSON, err := json.Marshal(dataMap[dataKey].vectorData.Metadata)
+					if err != nil {
+						return v.error(err,
+							"UpsertBatch-008",
+							fmt.Sprintf("fail to marshal Metadata field: %v", dataKey))
+					}
+
+					args = append(args, dataKey,
+						fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
+						string(fieldJSON))
 				}
 
-			case !isExists && dataMap[dataKey].Embedding != nil:
-				jsonData, err := json.Marshal(dataMap[dataKey])
-				if err != nil {
-					return v.error(err,
-						"UpsertBatch-009",
-						fmt.Sprintf("fail to marshal JSON document: %v", dataMap[dataKey].ID))
-				}
-
-				if err := pipe.Do(ctx,
-					"JSON.SET",
-					dataKey,
-					"$",
-					string(jsonData),
-					"NX").Err(); err != nil {
-					return v.error(err,
-						"UpsertBatch-010",
-						fmt.Sprintf("fail to insert JSON document: %v", dataMap[dataKey].ID))
-				}
-
-			case !isExists && dataMap[dataKey].Metadata != nil:
-				jsonData, err := json.Marshal(dataMap[dataKey])
-				if err != nil {
-					return v.error(err,
-						"UpsertBatch-011",
-						fmt.Sprintf("fail to marshal JSON document: %v", dataMap[dataKey].ID))
-				}
-
-				if err := pipe.Do(ctx,
-					"JSON.SET",
-					dataKey,
-					"$",
-					string(jsonData),
-					"NX").Err(); err != nil {
-					return v.error(err,
-						"UpsertBatch-012",
-						fmt.Sprintf("fail to insert JSON document: %v", dataMap[dataKey].ID))
+				if err := pipe.Do(ctx, args...).Err(); err != nil {
+					return v.error(err, "Upsert-006", "fail to update JSON fields", dataKey)
 				}
 			}
 		}
@@ -398,6 +471,155 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 
 	return nil
 }
+
+// func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, arrayData []vectordb.Data, batchNumber int) error {
+
+// 	if batchNumber <= 0 {
+// 		return v.error(
+// 			errors.New("batchNumber must be greater than 0"),
+// 			"UpsertBatch-001",
+// 			"invalid batch number")
+// 	}
+
+// 	for start := 0; start < len(arrayData); start += batchNumber {
+
+// 		if err := ctx.Err(); err != nil {
+// 			return err
+// 		}
+
+// 		end := start + batchNumber
+// 		if end > len(arrayData) {
+// 			end = len(arrayData)
+// 		}
+
+// 		pipe := v.client.Pipeline()
+
+// 		dataMap := make(map[string]vectordb.Data, len(arrayData[start:end]))
+// 		dataKeys := make([]string, len(arrayData[start:end]))
+// 		for index, data := range arrayData[start:end] {
+// 			dataKey, err := createDataKey(collection, data.ID)
+// 			if err != nil {
+// 				return v.error(err,
+// 					"UpsertBatch-001",
+// 					fmt.Sprintf("fail to create dataKey: %v", data.ID))
+// 			}
+// 			dataMap[dataKey] = data
+// 			dataKeys[index] = dataKey
+// 		}
+
+// 		existenceMap, err := v.IsKeyExistsBatch(ctx, collection, dataKeys)
+// 		if err != nil {
+// 			return v.error(err,
+// 				"UpsertBatch-002",
+// 				"fail to check key existence")
+// 		}
+
+// 		for dataKey, isExists := range existenceMap {
+// 			switch {
+// 			case dataMap[dataKey].Embedding != nil && dataMap[dataKey].Metadata != nil:
+// 				jsonData, err := json.Marshal(dataMap[dataKey])
+// 				if err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-003",
+// 						fmt.Sprintf("fail to marshal JSON document: %v", dataMap[dataKey].ID))
+// 				}
+
+// 				if err := pipe.Do(ctx,
+// 					"JSON.SET",
+// 					dataKey,
+// 					"$",
+// 					string(jsonData)).Err(); err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-004",
+// 						fmt.Sprintf("fail to insert JSON document: %v", dataMap[dataKey].ID))
+// 				}
+
+// 			case isExists && dataMap[dataKey].Embedding != nil:
+// 				embeddingJSON, err := json.Marshal(dataMap[dataKey].Embedding)
+// 				if err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-005",
+// 						fmt.Sprintf("fail to marshal JSON embedding: %v", dataMap[dataKey].ID))
+// 				}
+
+// 				if err := pipe.Do(ctx,
+// 					"JSON.SET",
+// 					dataKey,
+// 					fmt.Sprintf("$.%s", vectordb.EmbeddingColumnName),
+// 					string(embeddingJSON)).Err(); err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-006",
+// 						fmt.Sprintf("fail to update JSON embedding: %v", dataMap[dataKey].ID))
+// 				}
+
+// 			case isExists && dataMap[dataKey].Metadata != nil:
+// 				metadataJSON, err := json.Marshal(dataMap[dataKey].Metadata)
+// 				if err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-007",
+// 						fmt.Sprintf("fail to marshal JSON metadata: %v", dataMap[dataKey].ID))
+// 				}
+
+// 				if err := pipe.Do(ctx,
+// 					"JSON.SET",
+// 					dataKey,
+// 					fmt.Sprintf("$.%s", vectordb.MetadataColumnName),
+// 					string(metadataJSON)).Err(); err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-008",
+// 						fmt.Sprintf("fail to update JSON metadata: %v", dataMap[dataKey].ID))
+// 				}
+
+// 			case !isExists && dataMap[dataKey].Embedding != nil:
+// 				jsonData, err := json.Marshal(dataMap[dataKey])
+// 				if err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-009",
+// 						fmt.Sprintf("fail to marshal JSON document: %v", dataMap[dataKey].ID))
+// 				}
+
+// 				if err := pipe.Do(ctx,
+// 					"JSON.SET",
+// 					dataKey,
+// 					"$",
+// 					string(jsonData),
+// 					"NX").Err(); err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-010",
+// 						fmt.Sprintf("fail to insert JSON document: %v", dataMap[dataKey].ID))
+// 				}
+
+// 			case !isExists && dataMap[dataKey].Metadata != nil:
+// 				jsonData, err := json.Marshal(dataMap[dataKey])
+// 				if err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-011",
+// 						fmt.Sprintf("fail to marshal JSON document: %v", dataMap[dataKey].ID))
+// 				}
+
+// 				if err := pipe.Do(ctx,
+// 					"JSON.SET",
+// 					dataKey,
+// 					"$",
+// 					string(jsonData),
+// 					"NX").Err(); err != nil {
+// 					return v.error(err,
+// 						"UpsertBatch-012",
+// 						fmt.Sprintf("fail to insert JSON document: %v", dataMap[dataKey].ID))
+// 				}
+// 			}
+// 		}
+
+// 		_, err = pipe.Exec(ctx)
+// 		if err != nil {
+// 			return v.error(err,
+// 				"UpsertBatch-013",
+// 				"fail to execute pipeline to insert data")
+// 		}
+// 	}
+
+// 	return nil
+// }
 
 func (v *VectorDBConnector) DeleteBatch(ctx context.Context, collection string, arrayID []string, batchNumber int) error {
 
@@ -441,6 +663,7 @@ func (v *VectorDBConnector) DeleteBatch(ctx context.Context, collection string, 
 
 	return nil
 }
+
 func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, dataID string) (vectordb.Data, error) {
 
 	dataKey, err := createDataKey(collection, dataID)
@@ -469,6 +692,12 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, data
 		return vectordb.Data{}, v.error(err,
 			"GetByID-004",
 			fmt.Sprintf("fail to decode JSON data: %v", dataID))
+	}
+
+	if err := data.Validate(); err != nil {
+		return vectordb.Data{}, v.error(err,
+			"GetByID-005",
+			fmt.Sprintf("retrieved data validation error: %v", data.ID))
 	}
 
 	return data, nil

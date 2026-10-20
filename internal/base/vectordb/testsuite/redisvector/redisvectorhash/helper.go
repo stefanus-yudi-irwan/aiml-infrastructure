@@ -132,15 +132,11 @@ func createTestCollectionConfig(collection string) redisvectorhash.CollectionCon
 
 func generateTestData(id string) vectordb.Data {
 
-	denseEmbeddings := make(map[string]vectordb.DenseEmbedding)
-	sparseEmbeddings := make(map[string]vectordb.SparseEmbedding)
+	denseEmbeddings := make(map[vectordb.DenseEmbeddingName][]float32)
+	sparseEmbeddings := make(map[vectordb.SparseEmbeddingName]vectordb.SparseEmbedding)
 
-	denseEmbeddings[vectordb.DenseEmbedding1Name] = vectordb.DenseEmbedding{
-		Values: generateRandomVector(TEST_VECTOR_DIMENSION),
-	}
-	denseEmbeddings[vectordb.DenseEmbedding2Name] = vectordb.DenseEmbedding{
-		Values: generateRandomVector(TEST_VECTOR_DIMENSION),
-	}
+	denseEmbeddings[vectordb.DenseEmbedding1Name] = generateRandomVector(TEST_VECTOR_DIMENSION)
+	denseEmbeddings[vectordb.DenseEmbedding2Name] = generateRandomVector(TEST_VECTOR_DIMENSION)
 	sparseEmbeddings[vectordb.SparseEmbedding1Name] = vectordb.SparseEmbedding{
 		Indices: generateRandomIndices(TEST_VECTOR_DIMENSION),
 		Values:  generateRandomVector(TEST_VECTOR_DIMENSION),
