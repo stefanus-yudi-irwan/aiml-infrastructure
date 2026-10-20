@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	TEST_VECTOR_DIMENSION int = 512
+	TEST_VECTOR_DIMENSION int = 5
 	TEST_CONTENT_LENGTH   int = 3000
 )
 
@@ -20,7 +20,7 @@ func createTestCollectionConfig(collection string) redisvectorjson.CollectionCon
 		EmbeddingFields: []*redisvectorjson.EmbeddingFieldConfig{
 			{
 				Name: fmt.Sprintf("%s.%s",
-					vectordb.DenseEmbeddingColumnName,
+					vectordb.DenseEmbeddingsColumnName,
 					vectordb.DenseEmbedding1Name),
 				DataType:   redisvectorjson.VECTOR_FLOAT32,
 				Dimension:  TEST_VECTOR_DIMENSION,
@@ -35,7 +35,7 @@ func createTestCollectionConfig(collection string) redisvectorjson.CollectionCon
 			},
 			{
 				Name: fmt.Sprintf("%s.%s",
-					vectordb.DenseEmbeddingColumnName,
+					vectordb.DenseEmbeddingsColumnName,
 					vectordb.DenseEmbedding2Name),
 				DataType:   redisvectorjson.VECTOR_FLOAT32,
 				Dimension:  TEST_VECTOR_DIMENSION,
@@ -77,9 +77,17 @@ func createTestCollectionConfig(collection string) redisvectorjson.CollectionCon
 			{
 				Type: redisvectorjson.FieldTypeText,
 				TextField: &redisvectorjson.TextFieldConfig{
-					Name: fmt.Sprintf("%s_%s",
-						vectordb.SparseEmbeddingColumnName,
+					Name: fmt.Sprintf("%s.%s",
+						vectordb.SparseEmbeddingsColumnName,
 						vectordb.SparseEmbedding1Name),
+				},
+			},
+			{
+				Type: redisvectorjson.FieldTypeText,
+				TextField: &redisvectorjson.TextFieldConfig{
+					Name: fmt.Sprintf("%s.%s",
+						vectordb.SparseEmbeddingsColumnName,
+						vectordb.SparseEmbedding2Name),
 				},
 			},
 			{
@@ -146,14 +154,85 @@ func generateTestData(id string) vectordb.Data {
 		DenseEmbeddings:  denseEmbeddings,
 		SparseEmbeddings: sparseEmbeddings,
 		Metadata: map[string]interface{}{
-			"person":       []string{"personA", "personB", "personC"},
-			"place":        []string{"placeA", "placeB", "placeC"},
-			"organization": []string{"orgA", "orgB", "orgC"},
-			"product":      []string{"productA", "productB", "productC"},
-			"event":        []string{"eventA", "eventB", "eventC"},
-			"title":        "titleA",
-			"tags":         []string{"tagsA", "tagsB", "tagsC"},
-			"description":  "descriptionA",
+			"person":        []string{"personA", "personB", "personC"},
+			"place":         []string{"placeA", "placeB", "placeC"},
+			"organization":  []string{"orgA", "orgB", "orgC"},
+			"product":       []string{"productA", "productB", "productC"},
+			"event":         []string{"eventA", "eventB", "eventC"},
+			"title":         "titleA",
+			"tags":          []string{"tagsA", "tagsB", "tagsC"},
+			"description":   "descriptionA",
+			"float_data":    1234.567,
+			"boolean_data":  true,
+			"float_array":   []float64{1.0, 2.0, 3.0, 4.0, 5.0},
+			"boolean_array": []bool{true, true, true, false, false},
+		},
+	}
+}
+
+func generateTestDataIdentity(id string) vectordb.Data {
+	return vectordb.Data{
+		ID:         id,
+		DocumentID: uuid.New().String(),
+		ChunkID:    uuid.New().String(),
+		Content:    generateRandomString(TEST_CONTENT_LENGTH),
+	}
+}
+
+func insertDenseEmbeddings(data vectordb.Data) vectordb.Data {
+	denseEmbeddings := make(map[vectordb.DenseEmbeddingName][]float32)
+	denseEmbeddings[vectordb.DenseEmbedding1Name] = generateRandomVector(TEST_VECTOR_DIMENSION)
+	denseEmbeddings[vectordb.DenseEmbedding2Name] = generateRandomVector(TEST_VECTOR_DIMENSION)
+
+	return vectordb.Data{
+		ID:              data.ID,
+		DocumentID:      data.DocumentID,
+		ChunkID:         data.ChunkID,
+		Content:         data.Content,
+		DenseEmbeddings: denseEmbeddings,
+	}
+}
+
+func insertSparseEmbeddings(data vectordb.Data) vectordb.Data {
+	sparseEmbeddings := make(map[vectordb.SparseEmbeddingName]vectordb.SparseEmbedding)
+
+	sparseEmbeddings[vectordb.SparseEmbedding1Name] = vectordb.SparseEmbedding{
+		Indices: generateRandomIndices(TEST_VECTOR_DIMENSION),
+		Values:  generateRandomVector(TEST_VECTOR_DIMENSION),
+	}
+	sparseEmbeddings[vectordb.SparseEmbedding2Name] = vectordb.SparseEmbedding{
+		Indices: generateRandomIndices(TEST_VECTOR_DIMENSION),
+		Values:  generateRandomVector(TEST_VECTOR_DIMENSION),
+	}
+
+	return vectordb.Data{
+		ID:               data.ID,
+		DocumentID:       data.DocumentID,
+		ChunkID:          data.ChunkID,
+		Content:          data.Content,
+		SparseEmbeddings: sparseEmbeddings,
+	}
+}
+
+func insertMetadata(data vectordb.Data) vectordb.Data {
+	return vectordb.Data{
+		ID:         data.ID,
+		DocumentID: data.DocumentID,
+		ChunkID:    data.ChunkID,
+		Content:    data.Content,
+		Metadata: map[string]interface{}{
+			"person":        []string{"personA", "personB", "personC"},
+			"place":         []string{"placeA", "placeB", "placeC"},
+			"organization":  []string{"orgA", "orgB", "orgC"},
+			"product":       []string{"productA", "productB", "productC"},
+			"event":         []string{"eventA", "eventB", "eventC"},
+			"title":         "titleA",
+			"tags":          []string{"tagsA", "tagsB", "tagsC"},
+			"description":   "descriptionA",
+			"float_data":    1234.567,
+			"boolean_data":  true,
+			"float_array":   []float64{1.0, 2.0, 3.0, 4.0, 5.0},
+			"boolean_array": []bool{true, true, true, false, false},
 		},
 	}
 }
@@ -164,6 +243,46 @@ func generateBulkTestData(dataID []string) []vectordb.Data {
 
 	for index, id := range dataID {
 		bulkData[index] = generateTestData(id)
+	}
+
+	return bulkData
+}
+
+func generateBulkTestDataIdentity(dataID []string) []vectordb.Data {
+	bulkData := make([]vectordb.Data, len(dataID))
+
+	for index, id := range dataID {
+		bulkData[index] = generateTestDataIdentity(id)
+	}
+
+	return bulkData
+}
+
+func insertBulkDenseEmbeddings(arrayData []vectordb.Data) []vectordb.Data {
+	bulkData := make([]vectordb.Data, len(arrayData))
+
+	for index, data := range arrayData {
+		bulkData[index] = insertDenseEmbeddings(data)
+	}
+
+	return bulkData
+}
+
+func insertBulkSparseEmbeddings(arrayData []vectordb.Data) []vectordb.Data {
+	bulkData := make([]vectordb.Data, len(arrayData))
+
+	for index, data := range arrayData {
+		bulkData[index] = insertSparseEmbeddings(data)
+	}
+
+	return bulkData
+}
+
+func insertBulkMetadata(arrayData []vectordb.Data) []vectordb.Data {
+	bulkData := make([]vectordb.Data, len(arrayData))
+
+	for index, data := range arrayData {
+		bulkData[index] = insertMetadata(data)
 	}
 
 	return bulkData

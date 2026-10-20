@@ -273,7 +273,7 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 	sparseEmbeddings := make(map[vectordb.SparseEmbeddingName]vectordb.SparseEmbedding)
 
 	for hashKey, hashValue := range fields {
-		if strings.Contains(hashKey, vectordb.DenseEmbeddingColumnName) {
+		if strings.Contains(hashKey, vectordb.DenseEmbeddingsColumnName) {
 			vectorFloat32, err := convertEmbeddingBytetoEmbeddingFloat32([]byte(hashValue))
 			if err != nil {
 				return vectordb.Data{}, v.error(err,
@@ -282,10 +282,10 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 			}
 			denseEmbeddings[vectordb.DenseEmbeddingName(
 				strings.TrimPrefix(hashKey,
-					fmt.Sprintf("%s_", vectordb.DenseEmbeddingColumnName)))] = vectorFloat32
+					fmt.Sprintf("%s:", vectordb.DenseEmbeddingsColumnName)))] = vectorFloat32
 		}
 
-		if strings.Contains(hashKey, vectordb.SparseEmbeddingColumnName) {
+		if strings.Contains(hashKey, vectordb.SparseEmbeddingsColumnName) {
 			var sparseEmbedding vectordb.SparseEmbedding
 			if err := json.Unmarshal([]byte(fields[hashKey]), &sparseEmbedding); err != nil {
 				return vectordb.Data{}, v.error(err,
@@ -294,7 +294,7 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 			}
 			sparseEmbeddings[vectordb.SparseEmbeddingName(
 				strings.TrimPrefix(hashKey,
-					fmt.Sprintf("%s_", vectordb.SparseEmbeddingColumnName)))] = sparseEmbedding
+					fmt.Sprintf("%s:", vectordb.SparseEmbeddingsColumnName)))] = sparseEmbedding
 		}
 	}
 
@@ -305,6 +305,7 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, id s
 				"GetByID-005",
 				fmt.Sprintf("fail to unmarshall hash metadata: %v", id))
 		}
+		normalizeMetadata(metadataMap)
 	}
 
 	data := vectordb.Data{

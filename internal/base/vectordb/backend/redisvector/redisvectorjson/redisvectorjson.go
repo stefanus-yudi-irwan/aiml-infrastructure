@@ -288,7 +288,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			}
 
 			args = append(args, dataKey,
-				fmt.Sprintf("$.%s", vectordb.DenseEmbeddingColumnName),
+				fmt.Sprintf("$.%s", vectordb.DenseEmbeddingsColumnName),
 				string(fieldJSON))
 		}
 
@@ -301,7 +301,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			}
 
 			args = append(args, dataKey,
-				fmt.Sprintf("$.%s", vectordb.SparseEmbeddingColumnName),
+				fmt.Sprintf("$.%s", vectordb.SparseEmbeddingsColumnName),
 				string(fieldJSON))
 		}
 
@@ -425,7 +425,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 					}
 
 					args = append(args, dataKey,
-						fmt.Sprintf("$.%s", vectordb.DenseEmbeddingColumnName),
+						fmt.Sprintf("$.%s", vectordb.DenseEmbeddingsColumnName),
 						string(fieldJSON))
 				}
 
@@ -438,7 +438,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 					}
 
 					args = append(args, dataKey,
-						fmt.Sprintf("$.%s", vectordb.SparseEmbeddingColumnName),
+						fmt.Sprintf("$.%s", vectordb.SparseEmbeddingsColumnName),
 						string(fieldJSON))
 				}
 
@@ -693,6 +693,7 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, data
 			"GetByID-004",
 			fmt.Sprintf("fail to decode JSON data: %v", dataID))
 	}
+	normalizeMetadata(data.Metadata)
 
 	if err := data.Validate(); err != nil {
 		return vectordb.Data{}, v.error(err,

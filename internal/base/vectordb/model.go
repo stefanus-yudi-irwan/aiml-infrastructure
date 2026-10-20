@@ -3,18 +3,17 @@ package vectordb
 import (
 	"errors"
 	"fmt"
-	"reflect"
 )
 
 var (
 	// main data
-	IDColumnName              string = "id"
-	DocumentIDColumnName      string = "document_id"
-	ChunkIDColumnName         string = "chunk_id"
-	ContentColumnName         string = "content"
-	SparseEmbeddingColumnName string = "sparse_embedding"
-	DenseEmbeddingColumnName  string = "dense_embedding"
-	MetadataColumnName        string = "metadata"
+	IDColumnName               string = "id"
+	DocumentIDColumnName       string = "document_id"
+	ChunkIDColumnName          string = "chunk_id"
+	ContentColumnName          string = "content"
+	SparseEmbeddingsColumnName string = "sparse_embeddings"
+	DenseEmbeddingsColumnName  string = "dense_embeddings"
+	MetadataColumnName         string = "metadata"
 )
 
 type SparseEmbeddingName string
@@ -163,8 +162,19 @@ func (d *Data) ValidateDenseEmbeddings() error {
 }
 
 func (d *Data) ValidateMetadata() error {
-	if reflect.ValueOf(d.Metadata).IsZero() {
+	if len(d.Metadata) == 0 {
 		return errors.New("metadata cannot be empty")
+	}
+
+	for key, value := range d.Metadata {
+		switch value.(type) {
+		case bool, []bool, string, []string, float64, []float64:
+			//valid metadata type
+		default:
+			return fmt.Errorf("metadata field %q has unsupported type %T",
+				key,
+				value)
+		}
 	}
 	return nil
 }

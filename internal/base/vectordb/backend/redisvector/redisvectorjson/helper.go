@@ -67,6 +67,37 @@ func queueDelete(ctx context.Context, pipe redis.Pipeliner, collection string, i
 	return nil
 }
 
+func normalizeMetadata(metadata map[string]interface{}) {
+	for key, value := range metadata {
+		items, ok := value.([]interface{})
+		if !ok {
+			continue
+		}
+
+		if values, ok := toTypedSlice[string](items); ok {
+			metadata[key] = values
+		} else if values, ok := toTypedSlice[bool](items); ok {
+			metadata[key] = values
+		} else if values, ok := toTypedSlice[float64](items); ok {
+			metadata[key] = values
+		}
+	}
+}
+
+func toTypedSlice[T any](items []interface{}) ([]T, bool) {
+	result := make([]T, len(items))
+
+	for index, item := range items {
+		value, ok := item.(T)
+		if !ok {
+			return nil, false
+		}
+		result[index] = value
+	}
+
+	return result, true
+}
+
 func CosineSimilarity(a, b []float32) (float32, error) {
 	if len(a) != len(b) {
 		return 0, errors.New("vectors must have the same dimension")

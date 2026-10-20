@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -72,8 +71,8 @@ func createDenseEmbeddingHash(data vectordb.Data) (map[string]interface{}, error
 			return nil, err
 		}
 
-		denseEmbeddingHash[fmt.Sprintf("%s_%s",
-			vectordb.DenseEmbeddingColumnName,
+		denseEmbeddingHash[fmt.Sprintf("%s:%s",
+			vectordb.DenseEmbeddingsColumnName,
 			embeddingName)] = embeddingByte
 	}
 
@@ -88,8 +87,8 @@ func createSparseEmbeddingHash(data vectordb.Data) (map[string]interface{}, erro
 		if err != nil {
 			return nil, err
 		}
-		sparseEmbeddingHash[fmt.Sprintf("%s_%s",
-			vectordb.SparseEmbeddingColumnName,
+		sparseEmbeddingHash[fmt.Sprintf("%s:%s",
+			vectordb.SparseEmbeddingsColumnName,
 			embeddingName)] = sparseEmbeddingJson
 	}
 
@@ -106,13 +105,13 @@ func createMetadataHash(data vectordb.Data) (map[string]interface{}, error) {
 	metadataHash[vectordb.MetadataColumnName] = metadataJson
 
 	for key, value := range data.Metadata {
-		switch value := value.(type) {
-		case []string:
-			metadataHash[key] = strings.Join(value, ",")
-		default:
-			metadataHash[key] = value
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
 		}
-
+		metadataHash[fmt.Sprintf("%s:%s",
+			vectordb.MetadataColumnName,
+			key)] = string(encoded)
 	}
 	return metadataHash, nil
 }
@@ -189,6 +188,37 @@ func queueDelete(ctx context.Context, pipe redis.Pipeliner, collection string, i
 	}
 
 	return nil
+}
+
+func normalizeMetadata(metadata map[string]interface{}) {
+	for key, value := range metadata {
+		items, ok := value.([]interface{})
+		if !ok {
+			continue
+		}
+
+		if values, ok := toTypedSlice[string](items); ok {
+			metadata[key] = values
+		} else if values, ok := toTypedSlice[bool](items); ok {
+			metadata[key] = values
+		} else if values, ok := toTypedSlice[float64](items); ok {
+			metadata[key] = values
+		}
+	}
+}
+
+func toTypedSlice[T any](items []interface{}) ([]T, bool) {
+	result := make([]T, len(items))
+
+	for index, item := range items {
+		value, ok := item.(T)
+		if !ok {
+			return nil, false
+		}
+		result[index] = value
+	}
+
+	return result, true
 }
 
 func CosineSimilarity(a, b []float32) (float32, error) {
