@@ -82,6 +82,12 @@ func (d *Data) Validate() error {
 		return err
 	}
 
+	if len(d.DenseEmbeddings) == 0 &&
+		len(d.SparseEmbeddings) == 0 &&
+		d.Metadata == nil {
+		return errors.New("dense embeddings, sparse embeddings, and metadata cannot be nil at the same time")
+	}
+
 	if d.SparseEmbeddings != nil {
 		if err := d.ValidateSparseEmbeddings(); err != nil {
 			return err

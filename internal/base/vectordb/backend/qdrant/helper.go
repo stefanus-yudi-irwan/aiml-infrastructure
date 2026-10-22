@@ -2,7 +2,6 @@ package qdrant
 
 import (
 	"aiml-infrastructure/internal/base/vectordb"
-	"encoding/json"
 	"errors"
 	"math"
 
@@ -10,98 +9,58 @@ import (
 )
 
 func createQdrantPoint(data vectordb.Data) (*qdrant.PointStruct, error) {
-
-	var err error
-	var id *qdrant.PointId
-	var embeddings *qdrant.Vectors
-	var metadata map[string]*qdrant.Value
-
-	switch {
-	case data.Embedding != nil && data.Metadata != nil && len(data.Metadata) > 0:
-		id = qdrant.NewID(data.ID)
-		embeddings = createQdrantMapEmbedding(data)
-		metadata, err = createQdrantMapMetadata(data)
-		if err != nil {
-			return nil, err
-		}
-	case data.Embedding != nil && data.Metadata == nil:
-		id = qdrant.NewID(data.ID)
-		embeddings = createQdrantMapEmbedding(data)
-		metadata = nil
-	case data.Embedding == nil && data.Metadata != nil && len(data.Metadata) > 0:
-		id = qdrant.NewID(data.ID)
-		embeddings = nil
-		metadata, err = createQdrantMapMetadata(data)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, errors.New("either embedding or metadata must be provided")
+	metadata, err := createQdrantMapMetadata(data)
+	if err != nil {
+		return nil, err
 	}
 
+	embeddings := createQdrantMapEmbeddings(data)
+
 	return &qdrant.PointStruct{
-		Id:      id,
+		Id:      qdrant.NewID(data.ID),
 		Vectors: embeddings,
 		Payload: metadata,
 	}, nil
 }
 
-func createQdrantMapIdentity(data vectordb.Data) map[string]*qdrant.Value {
-	identityMap := map[string]*qdrant.Value{
-		vectordb.DocumentIDColumnName: qdrant.NewValueString(data.DocumentID),
-		vectordb.ChunkIDColumnName:    qdrant.NewValueString(data.ChunkID),
-		vectordb.ContentColumnName:    qdrant.NewValueString(data.Content),
+func createQdrantMapEmbeddings(data vectordb.Data) *qdrant.Vectors {
+	embeddings := make(map[string]*qdrant.Vector, len(data.DenseEmbeddings))
+
+	for name, embedding := range data.DenseEmbeddings {
+		embeddings[string(name)] = qdrant.NewVector(embedding...)
 	}
 
-	return identityMap
-}
+	for name, embedding := range data.SparseEmbeddings {
+		embeddings[string(name)] = qdrant.NewVectorSparse(
+			embedding.Indices,
+			embedding.Values,
+		)
+	}
 
-func createQdrantMapEmbedding(data vectordb.Data) *qdrant.Vectors {
-	return qdrant.NewVectors(data.Embedding...)
+	return qdrant.NewVectorsMap(embeddings)
 }
 
 func createQdrantMapMetadata(data vectordb.Data) (map[string]*qdrant.Value, error) {
-
-	metadataJson, err := json.Marshal(data.Metadata)
-	if err != nil {
-		return nil, err
-	}
-
 	metadataMap := map[string]*qdrant.Value{
 		vectordb.DocumentIDColumnName: qdrant.NewValueString(data.DocumentID),
 		vectordb.ChunkIDColumnName:    qdrant.NewValueString(data.ChunkID),
 		vectordb.ContentColumnName:    qdrant.NewValueString(data.Content),
-		vectordb.MetadataColumnName:   qdrant.NewValueString(string(metadataJson)),
 	}
 
 	for key, value := range data.Metadata {
 		switch v := value.(type) {
 		case []string:
 			metadataMap[key] = createStringListValue(v)
+		case []float64:
+			metadataMap[key] = createFloatListValue(v)
+		case []bool:
+			metadataMap[key] = createBoolListValue(v)
 		case string:
-			metadataMap[key] = &qdrant.Value{
-				Kind: &qdrant.Value_StringValue{
-					StringValue: v,
-				},
-			}
-		case int:
-			metadataMap[key] = &qdrant.Value{
-				Kind: &qdrant.Value_IntegerValue{
-					IntegerValue: int64(v),
-				},
-			}
+			metadataMap[key] = createStringValue(v)
 		case float64:
-			metadataMap[key] = &qdrant.Value{
-				Kind: &qdrant.Value_DoubleValue{
-					DoubleValue: v,
-				},
-			}
+			metadataMap[key] = createFloat64Value(v)
 		case bool:
-			metadataMap[key] = &qdrant.Value{
-				Kind: &qdrant.Value_BoolValue{
-					BoolValue: v,
-				},
-			}
+			metadataMap[key] = createBoolValue(v)
 		default:
 			return nil, errors.New("unsupported metadata type")
 		}
@@ -126,6 +85,68 @@ func createStringListValue(values []string) *qdrant.Value {
 	}
 }
 
+func createFloatListValue(values []float64) *qdrant.Value {
+	list := make([]*qdrant.Value, len(values))
+	for i, item := range values {
+		list[i] = &qdrant.Value{
+			Kind: &qdrant.Value_DoubleValue{
+				DoubleValue: item,
+			},
+		}
+	}
+
+	return &qdrant.Value{
+		Kind: &qdrant.Value_ListValue{
+			ListValue: &qdrant.ListValue{
+				Values: list,
+			},
+		},
+	}
+}
+
+func createBoolListValue(values []bool) *qdrant.Value {
+	list := make([]*qdrant.Value, len(values))
+	for i, item := range values {
+		list[i] = &qdrant.Value{
+			Kind: &qdrant.Value_BoolValue{
+				BoolValue: item,
+			},
+		}
+	}
+
+	return &qdrant.Value{
+		Kind: &qdrant.Value_ListValue{
+			ListValue: &qdrant.ListValue{
+				Values: list,
+			},
+		},
+	}
+}
+
+func createStringValue(value string) *qdrant.Value {
+	return &qdrant.Value{
+		Kind: &qdrant.Value_StringValue{
+			StringValue: value,
+		},
+	}
+}
+
+func createFloat64Value(value float64) *qdrant.Value {
+	return &qdrant.Value{
+		Kind: &qdrant.Value_DoubleValue{
+			DoubleValue: value,
+		},
+	}
+}
+
+func createBoolValue(value bool) *qdrant.Value {
+	return &qdrant.Value{
+		Kind: &qdrant.Value_BoolValue{
+			BoolValue: value,
+		},
+	}
+}
+
 func qdrantValueToInterface(value *qdrant.Value) interface{} {
 
 	if value == nil {
@@ -137,9 +158,6 @@ func qdrantValueToInterface(value *qdrant.Value) interface{} {
 	case *qdrant.Value_StringValue:
 		return kind.StringValue
 
-	case *qdrant.Value_IntegerValue:
-		return kind.IntegerValue
-
 	case *qdrant.Value_DoubleValue:
 		return kind.DoubleValue
 
@@ -147,22 +165,46 @@ func qdrantValueToInterface(value *qdrant.Value) interface{} {
 		return kind.BoolValue
 
 	case *qdrant.Value_ListValue:
-		values := make([]interface{}, len(kind.ListValue.Values))
+		values := kind.ListValue.Values
 
-		for i, item := range kind.ListValue.Values {
-			values[i] = qdrantValueToInterface(item)
+		if len(values) == 0 {
+			return []interface{}{}
 		}
 
-		return values
-
-	case *qdrant.Value_StructValue:
-		result := make(map[string]interface{})
-
-		for key, item := range kind.StructValue.Fields {
-			result[key] = qdrantValueToInterface(item)
+		switch values[0].Kind.(type) {
+		case *qdrant.Value_StringValue:
+			result := make([]string, len(values))
+			for i, item := range values {
+				if v, ok := item.Kind.(*qdrant.Value_StringValue); ok {
+					result[i] = v.StringValue
+				} else {
+					return nil
+				}
+			}
+			return result
+		case *qdrant.Value_DoubleValue:
+			result := make([]float64, len(values))
+			for i, item := range values {
+				if v, ok := item.Kind.(*qdrant.Value_DoubleValue); ok {
+					result[i] = v.DoubleValue
+				} else {
+					return nil
+				}
+			}
+			return result
+		case *qdrant.Value_BoolValue:
+			result := make([]bool, len(values))
+			for i, item := range values {
+				if v, ok := item.Kind.(*qdrant.Value_BoolValue); ok {
+					result[i] = v.BoolValue
+				} else {
+					return nil
+				}
+			}
+			return result
+		default:
+			return nil
 		}
-
-		return result
 
 	default:
 		return nil

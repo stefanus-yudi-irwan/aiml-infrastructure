@@ -38,24 +38,35 @@ func (v *VectorDBConnector) Ping(ctx context.Context) error {
 }
 
 func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConfig CollectionConfig) error {
+
+	denseVectorConfig := make(map[string]*qdrant.VectorParams)
+	sparseVectorConfig := make(map[string]*qdrant.SparseVectorParams)
+
+	for _, denseEmbeddingField := range collectionConfig.DenseEmbeddingFields {
+		denseVectorConfig[string(denseEmbeddingField.Name)] = &qdrant.VectorParams{
+			Size:     uint64(denseEmbeddingField.Dimension),
+			Distance: toQdrantDistance(denseEmbeddingField.Distance),
+		}
+
+		if denseEmbeddingField.HNSW != nil {
+			denseVectorConfig[string(denseEmbeddingField.Name)].HnswConfig = &qdrant.HnswConfigDiff{
+				M:           qdrant.PtrOf(uint64(denseEmbeddingField.HNSW.M)),
+				EfConstruct: qdrant.PtrOf(uint64(denseEmbeddingField.HNSW.EFConstruction)),
+			}
+		}
+	}
+
+	for _, sparseEmbeddingField := range collectionConfig.SparseEmbeddingFields {
+		sparseVectorConfig[string(sparseEmbeddingField.Name)] = &qdrant.SparseVectorParams{}
+	}
+
 	collection := &qdrant.CreateCollection{
-		CollectionName: collectionConfig.Name,
-		VectorsConfig: qdrant.NewVectorsConfig(
-			&qdrant.VectorParams{
-				Size:     collectionConfig.Dimension,
-				Distance: qdrant.Distance_Cosine,
-			},
-		),
+		CollectionName:      collectionConfig.Name,
+		VectorsConfig:       qdrant.NewVectorsConfigMap(denseVectorConfig),
+		SparseVectorsConfig: qdrant.NewSparseVectorsConfig(sparseVectorConfig),
 	}
 
 	// Optional configuration
-	if collectionConfig.HNSW != nil {
-		collection.HnswConfig = &qdrant.HnswConfigDiff{
-			M:                 qdrant.PtrOf(uint64(collectionConfig.HNSW.M)),
-			EfConstruct:       qdrant.PtrOf(uint64(collectionConfig.HNSW.EFConstruction)),
-			FullScanThreshold: qdrant.PtrOf(uint64(collectionConfig.HNSW.FullScanThreshold)),
-		}
-	}
 	if collectionConfig.ShardNumber > 0 {
 		collection.ShardNumber = qdrant.PtrOf(collectionConfig.ShardNumber)
 	}
@@ -136,6 +147,9 @@ func (v *VectorDBConnector) FlushAll(ctx context.Context) error {
 
 func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
 
+	hasVectors := len(data.DenseEmbeddings) > 0 || len(data.SparseEmbeddings) > 0
+	hasMetadata := len(data.Metadata) > 0
+
 	pointStruct, err := createQdrantPoint(data)
 	if err != nil {
 		return v.error(err,
@@ -143,13 +157,11 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			fmt.Sprintf("fail to create qdrant point: %v", data.ID))
 	}
 
-	// update both embedding and metadata if both are present
-	if data.Embedding != nil && data.Metadata != nil && len(data.Metadata) > 0 {
-		_, err = v.client.Upsert(ctx,
-			&qdrant.UpsertPoints{
-				CollectionName: collection,
-				Points:         []*qdrant.PointStruct{pointStruct},
-			})
+	if hasVectors && hasMetadata {
+		_, err = v.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: collection,
+			Points:         []*qdrant.PointStruct{pointStruct},
+		})
 
 		if err != nil {
 			return v.error(err,
@@ -169,7 +181,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 	}
 
 	switch {
-	case isExists && data.Embedding != nil:
+	case isExists && hasVectors:
 		// update embedding only
 		_, err = v.client.UpdateVectors(ctx,
 			&qdrant.UpdatePointVectors{
@@ -189,7 +201,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 				fmt.Sprintf("fail to update embedding: %v", data.ID))
 		}
 
-	case isExists && data.Metadata != nil:
+	case isExists && hasMetadata:
 		// update metadata only
 		_, err = v.client.SetPayload(ctx,
 			&qdrant.SetPayloadPoints{
@@ -213,7 +225,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			)
 		}
 
-	case !isExists && data.Embedding != nil:
+	case !isExists && hasVectors:
 		// insert embedding only
 		_, err = v.client.Upsert(ctx,
 			&qdrant.UpsertPoints{
@@ -228,12 +240,10 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			)
 		}
 
-	case !isExists && data.Metadata != nil:
+	case !isExists && hasMetadata:
 		// insert metadata only
 		return v.error(
-			errors.New(
-				"cannot insert metadata without embedding for a new point",
-			),
+			errors.New("cannot insert metadata without embedding for a new point"),
 			"Upsert-008",
 			fmt.Sprintf("cannot insert metadata-only point: %v", data.ID),
 		)
@@ -314,9 +324,9 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 			if point == nil || point.Id == nil {
 				continue
 			}
-
-			id := point.Id.String()
-			existenceMap[id] = true
+			if uuid := point.Id.GetUuid(); uuid != "" {
+				existenceMap[uuid] = true
+			}
 		}
 
 		var upsertPoints []*qdrant.PointStruct
@@ -335,7 +345,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 					fmt.Sprintf("fail to create qdrant point: %v", data.ID))
 			}
 
-			hasEmbedding := data.Embedding != nil
+			hasEmbedding := len(data.DenseEmbeddings) > 0 || len(data.SparseEmbeddings) > 0
 			hasMetadata := len(data.Metadata) > 0
 			isExists := existenceMap[data.ID]
 
@@ -371,9 +381,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 
 			case !isExists && hasMetadata:
 				return v.error(
-					errors.New(
-						"cannot insert metadata without embedding for a new point",
-					),
+					errors.New("cannot insert metadata without embedding for a new point"),
 					"UpsertBatch-005",
 					fmt.Sprintf("cannot insert metadata-only point: %v", data.ID),
 				)
@@ -385,11 +393,10 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 			}
 
 			if len(upsertPoints) > 0 {
-				_, err = v.client.Upsert(ctx,
-					&qdrant.UpsertPoints{
-						CollectionName: collection,
-						Points:         upsertPoints,
-					},
+				_, err = v.client.Upsert(ctx, &qdrant.UpsertPoints{
+					CollectionName: collection,
+					Points:         upsertPoints,
+				},
 				)
 				if err != nil {
 					return v.error(err,
@@ -400,11 +407,10 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 			}
 
 			if len(updateVectors) > 0 {
-				_, err = v.client.UpdateVectors(ctx,
-					&qdrant.UpdatePointVectors{
-						CollectionName: collection,
-						Points:         updateVectors,
-					},
+				_, err = v.client.UpdateVectors(ctx, &qdrant.UpdatePointVectors{
+					CollectionName: collection,
+					Points:         updateVectors,
+				},
 				)
 				if err != nil {
 					return v.error(err,
@@ -485,13 +491,12 @@ func (v *VectorDBConnector) DeleteBatch(ctx context.Context, collection string, 
 
 func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, dataID string) (vectordb.Data, error) {
 
-	result, err := v.client.Get(ctx,
-		&qdrant.GetPoints{
-			CollectionName: collection,
-			Ids:            []*qdrant.PointId{qdrant.NewID(dataID)},
-			WithPayload:    qdrant.NewWithPayload(true),
-			WithVectors:    qdrant.NewWithVectors(true),
-		},
+	result, err := v.client.Get(ctx, &qdrant.GetPoints{
+		CollectionName: collection,
+		Ids:            []*qdrant.PointId{qdrant.NewID(dataID)},
+		WithPayload:    qdrant.NewWithPayload(true),
+		WithVectors:    qdrant.NewWithVectors(true),
+	},
 	)
 
 	if err != nil {
@@ -509,26 +514,35 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, data
 	}
 
 	point := result[0]
-
 	data := vectordb.Data{
-		ID:       dataID,
-		Metadata: make(vectordb.MetadataMap),
+		ID:               dataID,
+		DenseEmbeddings:  make(map[vectordb.DenseEmbeddingName][]float32),
+		SparseEmbeddings: make(map[vectordb.SparseEmbeddingName]vectordb.SparseEmbedding),
+		Metadata:         make(map[string]interface{}),
 	}
 
 	if point.Vectors != nil {
-		denseVector := point.Vectors.GetVector().GetDenseVector()
-		if denseVector != nil {
-			data.Embedding = denseVector.GetData()
-		} else {
-			return vectordb.Data{}, v.error(errors.New("embedding not found"),
-				"GetByID-003",
-				fmt.Sprintf("embedding does not exist: collection=%s, id=%s", collection, dataID),
-			)
+		namedVectors := point.Vectors.GetVectors()
+		for name, vector := range namedVectors.GetVectors() {
+			if vector == nil {
+				continue
+			}
+
+			if dense := vector.GetDenseVector(); dense != nil {
+				data.DenseEmbeddings[vectordb.DenseEmbeddingName(name)] = dense.GetData()
+				continue
+			}
+
+			if sparse := vector.GetSparseVector(); sparse != nil {
+				data.SparseEmbeddings[vectordb.SparseEmbeddingName(name)] = vectordb.SparseEmbedding{
+					Indices: sparse.GetIndices(),
+					Values:  sparse.GetValues(),
+				}
+			}
 		}
 	}
 
 	for key, value := range point.Payload {
-
 		switch key {
 		case vectordb.IDColumnName:
 			if value != nil {
