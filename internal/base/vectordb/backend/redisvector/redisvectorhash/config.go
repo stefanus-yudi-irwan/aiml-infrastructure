@@ -227,14 +227,14 @@ func (c *HNSWConfig) Validate() error {
 	}
 
 	if c.EFConstruction < HNSW_EF_CONSTRUCTION_SMALL || c.EFConstruction > HNSW_EF_CONSTRUCTION_JUMBO {
-		return fmt.Errorf("unsuported candidate size, need to be between %d and %d: %d",
+		return fmt.Errorf("unsuported ef construction size, need to be between %d and %d: %d",
 			HNSW_EF_CONSTRUCTION_SMALL,
 			HNSW_EF_CONSTRUCTION_JUMBO,
 			c.EFConstruction)
 	}
 
 	if c.EFRuntime < HNSW_EF_RUNTIME_SMALL || c.EFRuntime > HNSW_EF_RUNTIME_JUMBO {
-		return fmt.Errorf("unsuported candidate size, need to be between %d and %d: %d",
+		return fmt.Errorf("unsuported ef runtime size, need to be between %d and %d: %d",
 			HNSW_EF_RUNTIME_SMALL,
 			HNSW_EF_RUNTIME_JUMBO,
 			c.EFRuntime)

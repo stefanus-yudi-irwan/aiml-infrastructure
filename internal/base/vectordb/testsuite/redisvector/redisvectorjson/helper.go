@@ -93,35 +93,40 @@ func createTestCollectionConfig(collection string) redisvectorjson.CollectionCon
 			{
 				Type: redisvectorjson.FieldTypeTag,
 				TagField: &redisvectorjson.TagFieldConfig{
-					Name:      "person",
+					Name: fmt.Sprintf("%s.person",
+						vectordb.MetadataColumnName),
 					Separator: ",",
 				},
 			},
 			{
 				Type: redisvectorjson.FieldTypeTag,
 				TagField: &redisvectorjson.TagFieldConfig{
-					Name:      "place",
+					Name: fmt.Sprintf("%s.place",
+						vectordb.MetadataColumnName),
 					Separator: ",",
 				},
 			},
 			{
 				Type: redisvectorjson.FieldTypeTag,
 				TagField: &redisvectorjson.TagFieldConfig{
-					Name:      "organization",
+					Name: fmt.Sprintf("%s.organization",
+						vectordb.MetadataColumnName),
 					Separator: ",",
 				},
 			},
 			{
 				Type: redisvectorjson.FieldTypeTag,
 				TagField: &redisvectorjson.TagFieldConfig{
-					Name:      "product",
+					Name: fmt.Sprintf("%s.product",
+						vectordb.MetadataColumnName),
 					Separator: ",",
 				},
 			},
 			{
 				Type: redisvectorjson.FieldTypeTag,
 				TagField: &redisvectorjson.TagFieldConfig{
-					Name:      "event",
+					Name: fmt.Sprintf("%s.event",
+						vectordb.MetadataColumnName),
 					Separator: ",",
 				},
 			},

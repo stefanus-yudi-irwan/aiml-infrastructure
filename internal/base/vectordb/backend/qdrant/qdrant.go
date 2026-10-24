@@ -83,6 +83,30 @@ func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConf
 			fmt.Sprintf("fail to craete collection name %s", collectionConfig.Name))
 	}
 
+	for _, dataConfig := range collectionConfig.DataFields {
+		fieldType, err := toQdrantFieldType(dataConfig.Type)
+		if err != nil {
+			return v.error(err,
+				"CreateCollection-002",
+				fmt.Sprintf("failed to map metadata field %q type", dataConfig.Name),
+			)
+		}
+
+		_, err = v.client.CreateFieldIndex(ctx,
+			&qdrant.CreateFieldIndexCollection{
+				CollectionName: collectionConfig.Name,
+				FieldName:      dataConfig.Name,
+				FieldType:      fieldType,
+			},
+		)
+		if err != nil {
+			return v.error(err,
+				"CreateColleciton-003",
+				fmt.Sprintf("failed to create field index: %v", dataConfig.Name),
+			)
+		}
+	}
+
 	return nil
 }
 
@@ -161,6 +185,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 		_, err = v.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: collection,
 			Points:         []*qdrant.PointStruct{pointStruct},
+			Wait:           qdrant.PtrOf(true),
 		})
 
 		if err != nil {
@@ -231,6 +256,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			&qdrant.UpsertPoints{
 				CollectionName: collection,
 				Points:         []*qdrant.PointStruct{pointStruct},
+				Wait:           qdrant.PtrOf(true),
 			},
 		)
 		if err != nil {
@@ -396,6 +422,7 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 				_, err = v.client.Upsert(ctx, &qdrant.UpsertPoints{
 					CollectionName: collection,
 					Points:         upsertPoints,
+					Wait:           qdrant.PtrOf(true),
 				},
 				)
 				if err != nil {
@@ -579,6 +606,7 @@ func (v *VectorDBConnector) CountVector(ctx context.Context, collection string) 
 			Exact:          &[]bool{true}[0],
 		},
 	)
+
 	if err != nil {
 		return 0, v.error(err,
 			"CountVector-001",

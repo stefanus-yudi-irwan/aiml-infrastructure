@@ -34,6 +34,7 @@ type CollectionConfig struct {
 	Name                   string
 	DenseEmbeddingFields   []*DenseEmbeddingFieldConfig
 	SparseEmbeddingFields  []*SparseEmbeddingFieldConfig
+	DataFields             []*DataFieldConfig
 	ShardNumber            uint32
 	ReplicationFactor      uint32
 	WriteConsistencyFactor uint32
@@ -131,6 +132,41 @@ func toQdrantDistance(distanceType DistanceType) qdrant.Distance {
 		return qdrant.Distance_Manhattan
 	default:
 		return qdrant.Distance_UnknownDistance
+	}
+}
+
+type DataFieldConfig struct {
+	Name string
+	Type DataFieldType
+}
+
+type DataFieldType string
+
+var (
+	DataFieldKeyword DataFieldType = "keyword"
+	DataFieldInteger DataFieldType = "integer"
+	DataFieldFloat   DataFieldType = "float"
+	DataFieldBool    DataFieldType = "bool"
+	DataFieldText    DataFieldType = "text"
+	DataFieldUUID    DataFieldType = "uuid"
+)
+
+func toQdrantFieldType(fieldType DataFieldType) (*qdrant.FieldType, error) {
+	switch fieldType {
+	case DataFieldKeyword:
+		return qdrant.FieldType_FieldTypeKeyword.Enum(), nil
+	case DataFieldInteger:
+		return qdrant.FieldType_FieldTypeInteger.Enum(), nil
+	case DataFieldFloat:
+		return qdrant.FieldType_FieldTypeFloat.Enum(), nil
+	case DataFieldBool:
+		return qdrant.FieldType_FieldTypeBool.Enum(), nil
+	case DataFieldText:
+		return qdrant.FieldType_FieldTypeText.Enum(), nil
+	case DataFieldUUID:
+		return qdrant.FieldType_FieldTypeUuid.Enum(), nil
+	default:
+		return nil, errors.New("unsuported data type")
 	}
 }
 
