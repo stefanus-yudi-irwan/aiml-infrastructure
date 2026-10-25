@@ -3,6 +3,7 @@ package qdrant
 import (
 	"aiml-infrastructure/internal/base/vectordb"
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -27,11 +28,15 @@ func createQdrantMapEmbeddings(data vectordb.Data) *qdrant.Vectors {
 	embeddings := make(map[string]*qdrant.Vector, len(data.DenseEmbeddings))
 
 	for name, embedding := range data.DenseEmbeddings {
-		embeddings[string(name)] = qdrant.NewVector(embedding...)
+		embeddings[fmt.Sprintf("%s.%s",
+			vectordb.DenseEmbeddingsColumnName,
+			name)] = qdrant.NewVector(embedding...)
 	}
 
 	for name, embedding := range data.SparseEmbeddings {
-		embeddings[string(name)] = qdrant.NewVectorSparse(
+		embeddings[fmt.Sprintf("%s.%s",
+			vectordb.SparseEmbeddingsColumnName,
+			name)] = qdrant.NewVectorSparse(
 			embedding.Indices,
 			embedding.Values,
 		)
@@ -48,19 +53,23 @@ func createQdrantMapMetadata(data vectordb.Data) (map[string]*qdrant.Value, erro
 	}
 
 	for key, value := range data.Metadata {
+		metadataKey := fmt.Sprintf("%s.%s",
+			vectordb.MetadataColumnName,
+			key,
+		)
 		switch v := value.(type) {
 		case []string:
-			metadataMap[key] = createStringListValue(v)
+			metadataMap[metadataKey] = createStringListValue(v)
 		case []float64:
-			metadataMap[key] = createFloatListValue(v)
+			metadataMap[metadataKey] = createFloatListValue(v)
 		case []bool:
-			metadataMap[key] = createBoolListValue(v)
+			metadataMap[metadataKey] = createBoolListValue(v)
 		case string:
-			metadataMap[key] = createStringValue(v)
+			metadataMap[metadataKey] = createStringValue(v)
 		case float64:
-			metadataMap[key] = createFloat64Value(v)
+			metadataMap[metadataKey] = createFloat64Value(v)
 		case bool:
-			metadataMap[key] = createBoolValue(v)
+			metadataMap[metadataKey] = createBoolValue(v)
 		default:
 			return nil, errors.New("unsupported metadata type")
 		}

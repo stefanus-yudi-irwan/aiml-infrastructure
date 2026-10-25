@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/qdrant/go-client/qdrant"
 )
@@ -43,13 +44,17 @@ func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConf
 	sparseVectorConfig := make(map[string]*qdrant.SparseVectorParams)
 
 	for _, denseEmbeddingField := range collectionConfig.DenseEmbeddingFields {
-		denseVectorConfig[string(denseEmbeddingField.Name)] = &qdrant.VectorParams{
+		denseVectorConfig[fmt.Sprintf("%s.%s",
+			vectordb.DenseEmbeddingsColumnName,
+			denseEmbeddingField.Name)] = &qdrant.VectorParams{
 			Size:     uint64(denseEmbeddingField.Dimension),
 			Distance: toQdrantDistance(denseEmbeddingField.Distance),
 		}
 
 		if denseEmbeddingField.HNSW != nil {
-			denseVectorConfig[string(denseEmbeddingField.Name)].HnswConfig = &qdrant.HnswConfigDiff{
+			denseVectorConfig[fmt.Sprintf("%s.%s",
+				vectordb.DenseEmbeddingsColumnName,
+				denseEmbeddingField.Name)].HnswConfig = &qdrant.HnswConfigDiff{
 				M:           qdrant.PtrOf(uint64(denseEmbeddingField.HNSW.M)),
 				EfConstruct: qdrant.PtrOf(uint64(denseEmbeddingField.HNSW.EFConstruction)),
 			}
@@ -57,7 +62,9 @@ func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConf
 	}
 
 	for _, sparseEmbeddingField := range collectionConfig.SparseEmbeddingFields {
-		sparseVectorConfig[string(sparseEmbeddingField.Name)] = &qdrant.SparseVectorParams{}
+		sparseVectorConfig[fmt.Sprintf("%s.%s",
+			vectordb.SparseEmbeddingsColumnName,
+			sparseEmbeddingField.Name)] = &qdrant.SparseVectorParams{}
 	}
 
 	collection := &qdrant.CreateCollection{
@@ -556,12 +563,16 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, data
 			}
 
 			if dense := vector.GetDenseVector(); dense != nil {
-				data.DenseEmbeddings[vectordb.DenseEmbeddingName(name)] = dense.GetData()
+				data.DenseEmbeddings[vectordb.DenseEmbeddingName(
+					strings.TrimPrefix(name,
+						fmt.Sprintf("%s.", vectordb.DenseEmbeddingsColumnName)))] = dense.GetData()
 				continue
 			}
 
 			if sparse := vector.GetSparseVector(); sparse != nil {
-				data.SparseEmbeddings[vectordb.SparseEmbeddingName(name)] = vectordb.SparseEmbedding{
+				data.SparseEmbeddings[vectordb.SparseEmbeddingName(
+					strings.TrimPrefix(name,
+						fmt.Sprintf("%s.", vectordb.SparseEmbeddingsColumnName)))] = vectordb.SparseEmbedding{
 					Indices: sparse.GetIndices(),
 					Values:  sparse.GetValues(),
 				}
@@ -592,7 +603,8 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, data
 			}
 
 		default:
-			data.Metadata[key] = qdrantValueToInterface(value)
+			data.Metadata[strings.TrimPrefix(key,
+				fmt.Sprintf("%s.", vectordb.MetadataColumnName))] = qdrantValueToInterface(value)
 		}
 	}
 
