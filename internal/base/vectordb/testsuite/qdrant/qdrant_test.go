@@ -2,7 +2,6 @@ package qdrant
 
 import (
 	"aiml-infrastructure/internal/base/vectordb/backend/qdrant"
-	"aiml-infrastructure/internal/base/vectordb/backend/redisvector/redisvectorhash"
 	"os"
 	"strconv"
 	"testing"
@@ -235,7 +234,7 @@ func (v *VectorDBTestSuite) Test004ManageSinglePartialData() {
 	assert.Equal(v.T(), dataIdentity.Content, dataGet.Content)
 	assert.Equal(v.T(),
 		normalizeSparseEmbeddingsMap(dataSparse.SparseEmbeddings),
-		normalizeSparseEmbeddingsMap(dataSparse.SparseEmbeddings))
+		normalizeSparseEmbeddingsMap(dataGet.SparseEmbeddings))
 
 	for key, vector := range dataDense.DenseEmbeddings {
 		cosineSimilarityScore, err := qdrant.CosineSimilarity(
@@ -305,7 +304,7 @@ func (v *VectorDBTestSuite) Test005ManageBatchPartialData() {
 			normalizeSparseEmbeddingsMap(dataGet.SparseEmbeddings))
 
 		for key, vector := range dataDense[index].DenseEmbeddings {
-			cosineSimilarityScore, err := redisvectorhash.CosineSimilarity(
+			cosineSimilarityScore, err := qdrant.CosineSimilarity(
 				qdrant.NormalizeVector(vector),
 				dataGet.DenseEmbeddings[key])
 			assert.NoError(v.T(), err)

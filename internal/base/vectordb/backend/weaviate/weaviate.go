@@ -3,8 +3,10 @@ package weaviate
 import (
 	"aiml-infrastructure/internal/base/vectordb"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate"
@@ -52,42 +54,107 @@ func (v *VectorDBConnector) Ping(ctx context.Context) error {
 }
 
 func (v *VectorDBConnector) CreateCollection(ctx context.Context, collectionConfig CollectionConfig) error {
-	// create weaviate model and properties
-	class := &models.Class{
-		Class:           collectionConfig.Name,
-		Description:     collectionConfig.Description,
-		Vectorizer:      collectionConfig.Vectorizer,
-		VectorIndexType: string(collectionConfig.VectorIndex),
-		VectorIndexConfig: map[string]interface{}{
-			"ef":             collectionConfig.HNSW.EF,
-			"efConstruction": collectionConfig.HNSW.EFConstruction,
-			"maxConnections": collectionConfig.HNSW.MaxConnections,
-			"distance":       collectionConfig.Distance,
-		},
-	}
+	// create vector configuration
+	vectorConfig := make(map[string]models.VectorConfig, len(collectionConfig.DenseEmbeddingFields))
+	for _, embeddingField := range collectionConfig.DenseEmbeddingFields {
 
-	for _, propertyConfig := range collectionConfig.Fields {
-		property := &models.Property{
-			Name:         propertyConfig.Name,
-			Description:  propertyConfig.Description,
-			DataType:     propertyConfig.DataType,
-			Tokenization: propertyConfig.Tokenization,
+		indexType, err := toWeaviateIndexType(embeddingField.Index)
+		if err != nil {
+			v.error(err,
+				"CreateCollection-001",
+				"unsupported index type")
 		}
 
-		if len(propertyConfig.Fields) > 0 {
-			for _, nestedPropertyConfig := range propertyConfig.Fields {
-				nestedProperty := &models.NestedProperty{
-					Name:         nestedPropertyConfig.Name,
-					Description:  nestedPropertyConfig.Description,
-					DataType:     nestedPropertyConfig.DataType,
-					Tokenization: nestedPropertyConfig.Tokenization,
+		distanceType, err := toWeaviateDistanceType(embeddingField.Distance)
+		if err != nil {
+			v.error(err,
+				"CreateCollection-002",
+				"unsupported distance type")
+		}
+
+		vectorConfig[fmt.Sprintf("%s_%s",
+			vectordb.DenseEmbeddingsColumnName,
+			embeddingField.Name)] = models.VectorConfig{
+			Vectorizer: map[string]interface{}{
+				"none": map[string]interface{}{},
+			},
+			VectorIndexType: indexType,
+			VectorIndexConfig: map[string]interface{}{
+				"ef":             embeddingField.HNSW.EFRuntime,
+				"efConstruction": embeddingField.HNSW.EFConstruction,
+				"maxConnections": embeddingField.HNSW.M,
+				"distance":       distanceType,
+			},
+		}
+	}
+
+	// create metadata configuration
+	metadataConfig := make([]*models.Property, 0,
+		len(collectionConfig.DataFields)+len(collectionConfig.SparseEmbeddingFields))
+
+	for _, sparseField := range collectionConfig.SparseEmbeddingFields {
+		weaviateDataType, err := toWeaviateDataType(sparseField.DataType)
+		if err != nil {
+			v.error(err,
+				"CreateCollection-001",
+				"fail to create weaviateDataType")
+		}
+
+		property := &models.Property{
+			Name: fmt.Sprintf("%s_%s",
+				vectordb.SparseEmbeddingsColumnName,
+				sparseField.Name),
+			Description: sparseField.Description,
+			DataType:    weaviateDataType,
+		}
+
+		metadataConfig = append(metadataConfig, property)
+	}
+
+	for _, dataField := range collectionConfig.DataFields {
+		weaviateDataType, err := toWeaviateDataType(dataField.DataType)
+		if err != nil {
+			v.error(err,
+				"CreateCollection-001",
+				"fail to create weaviateDataType")
+		}
+
+		property := &models.Property{
+			Name:        dataField.Name,
+			Description: dataField.Description,
+			DataType:    weaviateDataType,
+		}
+
+		if len(dataField.Fields) > 0 {
+			for _, field := range dataField.Fields {
+				weaviateDataType, err := toWeaviateDataType(field.DataType)
+				if err != nil {
+					v.error(err,
+						"CreateCollection-002",
+						"fail to create nested weaviateDataType")
 				}
 
-				property.NestedProperties = append(property.NestedProperties, nestedProperty)
+				nestedProperty := &models.NestedProperty{
+					Name:        field.Name,
+					Description: field.Description,
+					DataType:    weaviateDataType,
+				}
+
+				property.NestedProperties = append(
+					property.NestedProperties,
+					nestedProperty)
 			}
 		}
 
-		class.Properties = append(class.Properties, property)
+		metadataConfig = append(metadataConfig, property)
+	}
+
+	// create weaviate model and properties
+	class := &models.Class{
+		Class:        collectionConfig.Name,
+		Description:  collectionConfig.Description,
+		VectorConfig: vectorConfig,
+		Properties:   metadataConfig,
 	}
 
 	// create collection
@@ -184,6 +251,25 @@ func (v *VectorDBConnector) FlushAll(ctx context.Context) error {
 
 func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data vectordb.Data) error {
 
+	var err error
+	hasVectors := len(data.DenseEmbeddings) > 0
+	hasMetadata := len(data.Metadata) > 0 || len(data.SparseEmbeddings) > 0
+	vectors := make(models.Vectors)
+	properties := make(map[string]interface{})
+
+	if hasVectors {
+		vectors = createWeaviateVectors(data)
+	}
+
+	if hasMetadata {
+		properties, err = createWeaviateProperties(data)
+		if err != nil {
+			return v.error(err,
+				"Upsert-002",
+				fmt.Sprintf("fail to create properties: %v", data.ID))
+		}
+	}
+
 	// Check whether the object already exists.
 	isExists, err := v.IsKeyExists(ctx, collection, data.ID)
 	if err != nil {
@@ -194,20 +280,14 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 	}
 
 	// Both embedding and metadata are present.
-	if data.Embedding != nil && data.Metadata != nil && len(data.Metadata) > 0 {
-		properties := map[string]interface{}{
-			vectordb.DocumentIDColumnName: data.DocumentID,
-			vectordb.ChunkIDColumnName:    data.ChunkID,
-			vectordb.ContentColumnName:    data.Content,
-			vectordb.MetadataColumnName:   data.Metadata,
-		}
-
+	if hasVectors && hasMetadata {
 		if isExists {
 			err = v.client.Data().Updater().
+				WithMerge().
 				WithClassName(collection).
 				WithID(data.ID).
 				WithProperties(properties).
-				WithVector(data.Embedding).
+				WithVectors(vectors).
 				Do(ctx)
 
 			if err != nil {
@@ -223,7 +303,7 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			WithClassName(collection).
 			WithID(data.ID).
 			WithProperties(properties).
-			WithVector(data.Embedding).
+			WithVectors(vectors).
 			Do(ctx)
 
 		if err != nil {
@@ -237,12 +317,13 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 	}
 
 	switch {
-	case isExists && data.Embedding != nil:
+	case isExists && hasVectors:
 		// Update embedding only.
 		err = v.client.Data().Updater().
+			WithMerge().
 			WithClassName(collection).
 			WithID(data.ID).
-			WithVector(data.Embedding).
+			WithVectors(vectors).
 			Do(ctx)
 
 		if err != nil {
@@ -252,12 +333,13 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			)
 		}
 
-	case isExists && data.Metadata != nil:
+	case isExists && hasMetadata:
 		// Update metadata only.
 		err = v.client.Data().Updater().
+			WithMerge().
 			WithClassName(collection).
 			WithID(data.ID).
-			WithProperties(map[string]interface{}{vectordb.MetadataColumnName: data.Metadata}).
+			WithProperties(properties).
 			Do(ctx)
 
 		if err != nil {
@@ -267,12 +349,12 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			)
 		}
 
-	case !isExists && data.Embedding != nil:
+	case !isExists && hasVectors:
 		// Insert embedding only.
 		_, err = v.client.Data().Creator().
 			WithClassName(collection).
 			WithID(data.ID).
-			WithVector(data.Embedding).
+			WithVectors(vectors).
 			Do(ctx)
 
 		if err != nil {
@@ -282,15 +364,8 @@ func (v *VectorDBConnector) Upsert(ctx context.Context, collection string, data 
 			)
 		}
 
-	case !isExists && data.Metadata != nil:
+	case !isExists && hasMetadata:
 		// Insert metadata only without embedding.
-		properties := map[string]interface{}{
-			vectordb.DocumentIDColumnName: data.DocumentID,
-			vectordb.ChunkIDColumnName:    data.ChunkID,
-			vectordb.ContentColumnName:    data.Content,
-			vectordb.MetadataColumnName:   data.Metadata,
-		}
-
 		_, err = v.client.Data().Creator().
 			WithClassName(collection).
 			WithID(data.ID).
@@ -382,44 +457,95 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 					"context is cancelled")
 			}
 
-			hasEmbedding := data.Embedding != nil
-			hasMetadata := len(data.Metadata) > 0
+			var err error
+			hasVectors := len(data.DenseEmbeddings) > 0
+			hasMetadata := len(data.Metadata) > 0 || len(data.SparseEmbeddings) > 0
+			vectors := make(models.Vectors)
+			properties := make(map[string]interface{})
 			isExists := existenceMap[data.ID]
 
+			if hasVectors {
+				vectors = createWeaviateVectors(data)
+			}
+
+			if hasMetadata {
+				properties, err = createWeaviateProperties(data)
+				if err != nil {
+					return v.error(err,
+						"Upsert-002",
+						fmt.Sprintf("fail to create properties: %v", data.ID))
+				}
+			}
+
 			switch {
-			case !isExists && hasEmbedding && hasMetadata:
-				// create object with embedding + properties
-				properties := map[string]interface{}{
-					vectordb.DocumentIDColumnName: data.DocumentID,
-					vectordb.ChunkIDColumnName:    data.ChunkID,
-					vectordb.ContentColumnName:    data.Content,
-					vectordb.MetadataColumnName:   data.Metadata,
+			case isExists && hasVectors && hasMetadata:
+				// update embedding + metadata
+				err := v.client.Data().Updater().
+					WithMerge().
+					WithClassName(collection).
+					WithID(data.ID).
+					WithProperties(properties).
+					WithVectors(vectors).
+					Do(ctx)
+
+				if err != nil {
+					return v.error(err,
+						"UpsertBatch-009",
+						fmt.Sprintf("fail to update embedding and metadata: %v", data.ID),
+					)
 				}
 
+			case isExists && hasVectors:
+				// Update embedding only.
+				err := v.client.Data().Updater().
+					WithMerge().
+					WithClassName(collection).
+					WithID(data.ID).
+					WithVectors(vectors).
+					Do(ctx)
+
+				if err != nil {
+					return v.error(err,
+						"UpsertBatch-010",
+						fmt.Sprintf("fail to update embedding: %v", data.ID),
+					)
+				}
+
+			case isExists && hasMetadata:
+				// Update metadata only.
+				err := v.client.Data().Updater().
+					WithMerge().
+					WithClassName(collection).
+					WithID(data.ID).
+					WithProperties(properties).
+					Do(ctx)
+
+				if err != nil {
+					return v.error(err,
+						"UpsertBatch-011",
+						fmt.Sprintf("fail to update metadata: %v", data.ID),
+					)
+				}
+
+			case !isExists && hasVectors && hasMetadata:
+				// create object with embedding + properties
 				createObjects = append(createObjects, &models.Object{
 					Class:      collection,
 					ID:         strfmt.UUID(data.ID),
 					Properties: properties,
-					Vector:     data.Embedding,
+					Vectors:    vectors,
 				})
 
-			case !isExists && hasEmbedding:
+			case !isExists && hasVectors:
 				// create object with embedding only
 				createObjects = append(createObjects, &models.Object{
-					Class:  collection,
-					ID:     strfmt.UUID(data.ID),
-					Vector: data.Embedding,
+					Class:   collection,
+					ID:      strfmt.UUID(data.ID),
+					Vectors: vectors,
 				})
 
 			case !isExists && hasMetadata:
 				// create object with metadata only
-				properties := map[string]interface{}{
-					vectordb.DocumentIDColumnName: data.DocumentID,
-					vectordb.ChunkIDColumnName:    data.ChunkID,
-					vectordb.ContentColumnName:    data.Content,
-					vectordb.MetadataColumnName:   data.Metadata,
-				}
-
 				createObjects = append(createObjects, &models.Object{
 					Class:      collection,
 					ID:         strfmt.UUID(data.ID),
@@ -444,86 +570,6 @@ func (v *VectorDBConnector) UpsertBatch(ctx context.Context, collection string, 
 				return v.error(err,
 					"UpsertBatch-007",
 					fmt.Sprintf("fail to create objects: collection=%s", collection),
-				)
-			}
-		}
-
-		for _, data := range batch {
-			if err := ctx.Err(); err != nil {
-				return v.error(err,
-					"UpsertBatch-008",
-					"context is cancelled",
-				)
-			}
-
-			if !existenceMap[data.ID] {
-				continue
-			}
-
-			hasEmbedding := data.Embedding != nil
-			hasMetadata := len(data.Metadata) > 0
-
-			switch {
-			case hasEmbedding && hasMetadata:
-				// Update embedding + metadata.
-				properties := map[string]interface{}{
-					vectordb.DocumentIDColumnName: data.DocumentID,
-					vectordb.ChunkIDColumnName:    data.ChunkID,
-					vectordb.ContentColumnName:    data.Content,
-					vectordb.MetadataColumnName:   data.Metadata,
-				}
-
-				err := v.client.Data().Updater().
-					WithClassName(collection).
-					WithID(data.ID).
-					WithProperties(properties).
-					WithVector(data.Embedding).
-					Do(ctx)
-
-				if err != nil {
-					return v.error(err,
-						"UpsertBatch-009",
-						fmt.Sprintf("fail to update embedding and metadata: %v", data.ID),
-					)
-				}
-
-			case hasEmbedding:
-				// Update embedding only.
-				err := v.client.Data().Updater().
-					WithClassName(collection).
-					WithID(data.ID).
-					WithVector(data.Embedding).
-					Do(ctx)
-
-				if err != nil {
-					return v.error(err,
-						"UpsertBatch-010",
-						fmt.Sprintf("fail to update embedding: %v", data.ID),
-					)
-				}
-
-			case hasMetadata:
-				// Update metadata only.
-				err := v.client.Data().Updater().
-					WithClassName(collection).
-					WithID(data.ID).
-					WithProperties(map[string]interface{}{
-						"metadata": data.Metadata,
-					}).
-					Do(ctx)
-
-				if err != nil {
-					return v.error(err,
-						"UpsertBatch-011",
-						fmt.Sprintf("fail to update metadata: %v", data.ID),
-					)
-				}
-
-			default:
-				return v.error(
-					errors.New("either embedding or metadata must be provided"),
-					"UpsertBatch-012",
-					fmt.Sprintf("cannot upsert data object: %v", data.ID),
 				)
 			}
 		}
@@ -610,38 +656,110 @@ func (v *VectorDBConnector) GetByID(ctx context.Context, collection string, data
 	}
 
 	object := objects[0]
+	data := vectordb.Data{ID: object.ID.String()}
 
-	data := vectordb.Data{
-		ID:        object.ID.String(),
-		Embedding: object.Vector,
+	if len(object.Vectors) > 0 {
+		denseEmbedding := make(map[vectordb.DenseEmbeddingName][]float32, len(object.Vectors))
+		for name, embedding := range object.Vectors {
+			vector, ok := embedding.([]float32)
+			if !ok {
+				return vectordb.Data{}, v.error(fmt.Errorf("unexpected vector type of %q: %T", name, embedding),
+					"GetByID-004",
+					fmt.Sprintf("failed to parse named vector: collection=%s id=%s", collection, dataID))
+			}
+			denseEmbedding[vectordb.DenseEmbeddingName(
+				strings.TrimPrefix(name,
+					fmt.Sprintf("%s_", vectordb.DenseEmbeddingsColumnName)))] = vector
+		}
+		data.DenseEmbeddings = denseEmbedding
 	}
 
-	if object.Properties == nil {
-		return data, nil
-	}
+	if object.Properties != nil {
+		properties, ok := object.Properties.(map[string]interface{})
+		sparseEmbeddings := make(map[vectordb.SparseEmbeddingName]vectordb.SparseEmbedding)
+		if !ok {
+			return vectordb.Data{}, v.error(fmt.Errorf("unexpected properties type: %T", object.Properties),
+				"GetByID-005",
+				fmt.Sprintf("fail to parse object properties: collection=%s id=%s", collection, dataID),
+			)
+		}
 
-	properties, ok := object.Properties.(map[string]interface{})
-	if !ok {
-		return vectordb.Data{}, v.error(fmt.Errorf("unexpected properties type: %T", object.Properties),
-			"GetByID-004",
-			fmt.Sprintf("fail to parse object properties: collection=%s id=%s", collection, dataID),
-		)
-	}
+		for name, property := range properties {
+			if name == vectordb.DocumentIDColumnName {
+				payload, ok := property.(string)
+				if !ok {
+					return vectordb.Data{}, v.error(
+						fmt.Errorf("fail to parse document ID"),
+						"GetByID-006",
+					)
+				}
+				data.DocumentID = payload
+			}
 
-	if value, ok := properties["document_id"].(string); ok {
-		data.DocumentID = value
-	}
+			if name == vectordb.ChunkIDColumnName {
+				payload, ok := property.(string)
+				if !ok {
+					return vectordb.Data{}, v.error(
+						fmt.Errorf("fail to parse document ID"),
+						"GetByID-007",
+					)
+				}
+				data.ChunkID = payload
+			}
 
-	if value, ok := properties["chunk_id"].(string); ok {
-		data.ChunkID = value
-	}
+			if name == vectordb.ContentColumnName {
+				payload, ok := property.(string)
+				if !ok {
+					return vectordb.Data{}, v.error(
+						fmt.Errorf("fail to parse document ID"),
+						"GetByID-008",
+					)
+				}
+				data.Content = payload
+			}
 
-	if value, ok := properties["content"].(string); ok {
-		data.Content = value
-	}
+			if name == vectordb.MetadataColumnName {
+				payload, ok := property.(map[string]interface{})
+				if !ok {
+					return vectordb.Data{}, v.error(
+						fmt.Errorf("fail to parse document ID"),
+						"GetByID-009",
+					)
+				}
+				normalizeMetadata(payload)
+				data.Metadata = payload
+			}
 
-	if value, ok := properties["metadata"].(map[string]interface{}); ok {
-		data.Metadata = value
+			if strings.Contains(name, vectordb.SparseEmbeddingsColumnName) {
+				var jsonData []byte
+				switch payload := property.(type) {
+				case string:
+					jsonData = []byte(payload)
+				case []byte:
+					jsonData = payload
+				default:
+					return vectordb.Data{}, v.error(
+						fmt.Errorf("unexpected sparse embedding property type %q: %T", name, property),
+						"GetByID-010",
+						fmt.Sprintf("failed to parse sparse embedding: collection=%s id=%s", collection, dataID),
+					)
+				}
+
+				var sparseEmbedding vectordb.SparseEmbedding
+				if err := json.Unmarshal(jsonData, &sparseEmbedding); err != nil {
+					return vectordb.Data{}, v.error(err,
+						"GetByID-010",
+						fmt.Sprintf("fail to unmarshall sparseEmbedding: %v", data.ID),
+					)
+				}
+
+				sparseEmbeddings[vectordb.SparseEmbeddingName(
+					strings.TrimPrefix(name,
+						fmt.Sprintf("%s_", vectordb.SparseEmbeddingsColumnName)))] = sparseEmbedding
+			}
+		}
+
+		data.SparseEmbeddings = sparseEmbeddings
 	}
 
 	return data, nil
